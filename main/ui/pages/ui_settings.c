@@ -182,7 +182,9 @@ void libpicker_build(lv_obj_t *scr)
     lv_obj_set_style_border_width(s_picker_list, 0, 0);
     lv_obj_set_style_pad_all(s_picker_list, 0, 0);
     lv_obj_set_style_pad_row(s_picker_list, 6, 0);
-    lv_obj_set_scrollbar_mode(s_picker_list, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scrollbar_mode(s_picker_list, LV_SCROLLBAR_MODE_ACTIVE);
+    lv_obj_set_style_bg_color(s_picker_list, COLOR_ACCENT, LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_opa(s_picker_list, LV_OPA_COVER, LV_PART_SCROLLBAR);
     lv_obj_add_flag(s_picker, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -295,7 +297,9 @@ static lv_obj_t *make_view(lv_obj_t *page)
     lv_obj_set_size(v, AREA_W, PAGE_SWITCHER_Y - PAGE_TOP - 8);
     lv_obj_align(v, LV_ALIGN_TOP_MID, 0, PAGE_TOP);
     lv_obj_remove_flag(v, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_scrollbar_mode(v, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scrollbar_mode(v, LV_SCROLLBAR_MODE_ACTIVE);
+    lv_obj_set_style_bg_color(v, COLOR_ACCENT, LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_opa(v, LV_OPA_COVER, LV_PART_SCROLLBAR);
     lv_obj_set_flex_flow(v, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(v, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_top(v, 4, 0);

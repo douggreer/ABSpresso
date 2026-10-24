@@ -2,7 +2,7 @@
 
 // A cover carousel over a list of books. It is virtual: three card objects (previous, current,
 // next) are rebound after each move, so it costs the same for 3 books as for 300.
-// Swipes are not handled here; the owning page routes its gestures to carousel_step().
+// Horizontal drags on cards use a 20 px threshold and show a small progress cue.
 
 #include <stdbool.h>
 #include "lvgl.h"

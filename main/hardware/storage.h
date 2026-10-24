@@ -19,6 +19,8 @@ void storage_space(uint64_t *free_bytes, uint64_t *total_bytes);
 char *storage_read_file(const char *path, size_t *len);
 // Writes via a temporary file and rename, so a crash never leaves a half-written file.
 esp_err_t storage_write_file(const char *path, const void *data, size_t len);
+// Appends data directly (the caller should use a background task for slow SD writes).
+esp_err_t storage_append_file(const char *path, const void *data, size_t len);
 // Creates the directory and any missing parents.
 esp_err_t storage_mkdirs(const char *path);
 // Deletes a directory tree.

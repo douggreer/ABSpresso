@@ -11,7 +11,11 @@
 #include "player.h"
 
 #include <math.h>
+#include <errno.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/queue.h"
@@ -28,6 +32,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs.h"
+#include "storage.h"
 
 static const char *TAG = "player";
 
@@ -36,6 +41,29 @@ static const char *TAG = "player";
 #define SYNC_INTERVAL_US    (20 * 1000000LL)
 #define SEGMENT_MAX_RETRIES 40
 #define START_THRESHOLD     (48 * 1024)    // bytes buffered before the first decode
+#define PLAYBACK_LOG_LIMIT  (64 * 1024)
+
+typedef enum {
+    FAILURE_NONE,
+    FAILURE_SESSION,
+    FAILURE_STREAM,
+    FAILURE_LOCAL_FILE,
+    FAILURE_DECODER,
+    FAILURE_AUDIO_OUTPUT,
+    FAILURE_AUDIO_FORMAT,
+} playback_failure_t;
+
+typedef struct {
+    int64_t uptime_s;
+    int reason, code, segment;
+    int buffer_percent;
+    double position;
+    uint32_t decode_errors;
+    bool local;
+    char item_id[40], episode_id[40], title[128], author[96];
+} playback_log_event_t;
+
+static QueueHandle_t s_playback_log_queue;
 
 typedef enum {
     CMD_OPEN,
@@ -77,6 +105,10 @@ static double s_skip_seconds;
 static volatile bool s_fetch_done, s_fetch_failed, s_decode_done, s_underrun, s_audio_started;
 static volatile int64_t s_frames;   // frames decoded since the start segment
 static volatile int s_rate;
+static volatile int s_failure_reason, s_failure_code, s_failure_segment = -1;
+static volatile int s_last_http_status;
+static volatile uint32_t s_decode_errors;
+static bool s_error_logged;
 
 #ifdef PLAYER_STATUS_LOG
 static volatile uint32_t s_dbg_bytes_in, s_dbg_dec_err, s_dbg_write_max_us, s_dbg_underruns;
@@ -96,6 +128,13 @@ static void save_volume_if_settled(int64_t now);
 static double s_seg_start_time;
 static double s_listen_since_sync;
 static int64_t s_last_sync_us, s_last_tick_us;
+
+static void mark_failure(playback_failure_t reason, int code, int segment)
+{
+    s_failure_code = code;
+    s_failure_segment = segment;
+    s_failure_reason = reason;
+}
 
 /* ---------- fetch ---------- */
 
@@ -127,6 +166,7 @@ static bool fetch_segment(int seg, char *buf, int buf_len)
             sleep_unless_abort(attempt < 3 ? 500 : 1000);
         }
         int status = abs_stream_begin(s_net, path);
+        s_last_http_status = status;
         if (status != 200) {
             // 404: not transcoded yet. 500: the server restarted its transcoder for our seek.
             ESP_LOGD(TAG, "%s -> %d", path, status);
@@ -160,6 +200,7 @@ static bool fetch_segment(int seg, char *buf, int buf_len)
         if (ok) {
             return true;
         }
+        s_last_http_status = -1;  // HTTP succeeded, but the body did not complete.
         ESP_LOGW(TAG, "segment %d interrupted after %d bytes, retrying", seg, delivered);
     }
     return false;
@@ -174,6 +215,7 @@ static void fetch_local(char *buf, int buf_len)
     FILE *f = download_segment_offset(s_status.item_id, s_start_seg, &offset) == ESP_OK ? fopen(path, "rb") : NULL;
     if (!f || fseek(f, offset, SEEK_SET) != 0) {
         ESP_LOGE(TAG, "can't read downloaded audio %s", path);
+        mark_failure(FAILURE_LOCAL_FILE, errno, s_start_seg);
         if (f) fclose(f);
         s_fetch_failed = true;
         return;
@@ -201,6 +243,7 @@ static void fetch_task(void *arg)
             if (!fetch_segment(seg, buf, buf_len)) {
                 if (!s_abort) {
                     ESP_LOGE(TAG, "giving up on segment %d", seg);
+                    mark_failure(FAILURE_STREAM, s_last_http_status, seg);
                     s_fetch_failed = true;
                 }
                 break;
@@ -218,8 +261,10 @@ static void decode_run(uint8_t *in, int in_len, uint8_t **pcm, uint32_t *pcm_len
 {
     esp_audio_simple_dec_cfg_t cfg = {.dec_type = ESP_AUDIO_SIMPLE_DEC_TYPE_TS};
     esp_audio_simple_dec_handle_t dec = NULL;
-    if (esp_audio_simple_dec_open(&cfg, &dec) != ESP_AUDIO_ERR_OK) {
-        ESP_LOGE(TAG, "decoder open failed");
+    esp_audio_err_t open_err = esp_audio_simple_dec_open(&cfg, &dec);
+    if (open_err != ESP_AUDIO_ERR_OK) {
+        ESP_LOGE(TAG, "decoder open failed: %d", open_err);
+        mark_failure(FAILURE_DECODER, open_err, -1);
         s_fetch_failed = true;
         return;
     }
@@ -277,6 +322,7 @@ static void decode_run(uint8_t *in, int in_len, uint8_t **pcm, uint32_t *pcm_len
                 continue;
             }
             if (ret != ESP_AUDIO_ERR_OK) {
+                s_decode_errors++;
 #ifdef PLAYER_STATUS_LOG
                 s_dbg_dec_err++;
 #endif
@@ -301,7 +347,14 @@ static void decode_run(uint8_t *in, int in_len, uint8_t **pcm, uint32_t *pcm_len
                 esp_audio_simple_dec_info_t info = {0};
                 esp_audio_simple_dec_get_info(dec, &info);
                 ESP_LOGI(TAG, "stream: %lu Hz, %d ch, %d bit", info.sample_rate, info.channel, info.bits_per_sample);
-                if (info.bits_per_sample != 16 || board_audio_open(info.sample_rate, info.channel, 16) != ESP_OK) {
+                if (info.bits_per_sample != 16) {
+                    mark_failure(FAILURE_AUDIO_FORMAT, info.bits_per_sample, -1);
+                    s_fetch_failed = true;
+                    goto out;
+                }
+                esp_err_t audio_err = board_audio_open(info.sample_rate, info.channel, 16);
+                if (audio_err != ESP_OK) {
+                    mark_failure(FAILURE_AUDIO_OUTPUT, audio_err, -1);
                     s_fetch_failed = true;
                     goto out;
                 }
@@ -384,6 +437,11 @@ static void pipeline_start(double t)
     s_frames = 0;
     s_rate = 0;
     s_fetch_done = s_fetch_failed = s_decode_done = s_audio_started = false;
+    s_failure_reason = FAILURE_NONE;
+    s_failure_code = 0;
+    s_failure_segment = -1;
+    s_last_http_status = 0;
+    s_decode_errors = 0;
     s_underrun = true;
     ESP_LOGI(TAG, "play from %.1f s (segment %d of %d)", t, s_start_seg, s_last_seg);
 
@@ -531,6 +589,10 @@ static void close_session(void)
 
 static bool open_session(const char *item_id)
 {
+    s_error_logged = false;
+    s_failure_reason = FAILURE_NONE;
+    s_failure_code = 0;
+    s_failure_segment = -1;
     set_state(PLAYER_LOADING);
     const char *episode = s_status.episode_id;  // only the control task writes it
     // Downloads are books only; episodes always stream.
@@ -546,7 +608,9 @@ static bool open_session(const char *item_id)
         s_last_sync_us = esp_timer_get_time();
         return true;
     }
-    if (abs_start_session(item_id, episode, false, &s_session) != ESP_OK) {
+    esp_err_t session_err = abs_start_session(item_id, episode, false, &s_session);
+    if (session_err != ESP_OK) {
+        mark_failure(FAILURE_SESSION, session_err, -1);
         set_state(PLAYER_ERROR);
         return false;
     }
@@ -567,6 +631,106 @@ static void seek_to(double t)
     sync_progress(true);
     pipeline_start(t);
     set_state(s_paused ? PLAYER_PAUSED : PLAYER_BUFFERING);
+}
+
+/* ---------- bounded playback error log ---------- */
+
+static const char *failure_name(int reason)
+{
+    switch (reason) {
+    case FAILURE_SESSION: return "server_session";
+    case FAILURE_STREAM: return "stream_fetch";
+    case FAILURE_LOCAL_FILE: return "download_read";
+    case FAILURE_DECODER: return "decoder_open";
+    case FAILURE_AUDIO_OUTPUT: return "audio_output";
+    case FAILURE_AUDIO_FORMAT: return "audio_format";
+    default: return "unknown";
+    }
+}
+
+static void json_escape(char *out, size_t cap, const char *in)
+{
+    size_t n = 0;
+    if (!cap) return;
+    for (; in && *in && n + 2 < cap; in++) {
+        unsigned char c = (unsigned char)*in;
+        if (c == '"' || c == '\\') {
+            out[n++] = '\\';
+            out[n++] = (char)c;
+        } else if (c == '\n' || c == '\r' || c == '\t') {
+            out[n++] = ' ';
+        } else if (c >= 0x20) {
+            out[n++] = (char)c;
+        }
+    }
+    out[n] = 0;
+}
+
+static void playback_log_worker(void *arg)
+{
+    playback_log_event_t event;
+    const char *path = STORAGE_ROOT "/logs/playback.log";
+    char old1[96], old2[96];
+    snprintf(old1, sizeof(old1), "%s.1", path);
+    snprintf(old2, sizeof(old2), "%s.2", path);
+    for (;;) {
+        if (xQueueReceive(s_playback_log_queue, &event, portMAX_DELAY) != pdTRUE) continue;
+        if (!storage_ready()) continue;
+        storage_mkdirs(STORAGE_ROOT "/logs");
+
+        struct stat st;
+        if (stat(path, &st) == 0 && st.st_size >= PLAYBACK_LOG_LIMIT - 1024) {
+            unlink(old2);
+            rename(old1, old2);
+            rename(path, old1);
+        }
+
+        char title[260], author[196], item[96], episode[96], line[768];
+        json_escape(title, sizeof(title), event.title);
+        json_escape(author, sizeof(author), event.author);
+        json_escape(item, sizeof(item), event.item_id);
+        json_escape(episode, sizeof(episode), event.episode_id);
+        int len = snprintf(line, sizeof(line),
+                           "{\"uptime_s\":%lld,\"event\":\"playback_error\",\"reason\":\"%s\","
+                           "\"detail_code\":%d,\"segment\":%d,\"position_s\":%.1f,\"buffer_pct\":%d,"
+                           "\"local\":%s,\"decode_errors\":%lu,\"item_id\":\"%s\","
+                           "\"episode_id\":\"%s\",\"title\":\"%s\",\"author\":\"%s\"}\n",
+                           (long long)event.uptime_s, failure_name(event.reason), event.code, event.segment,
+                           event.position, event.buffer_percent, event.local ? "true" : "false",
+                           (unsigned long)event.decode_errors, item, episode, title, author);
+        if (len > 0 && len < sizeof(line)) storage_append_file(path, line, (size_t)len);
+    }
+}
+
+static void log_player_error(void)
+{
+    if (s_error_logged) return;
+    playback_log_event_t event = {0};
+    double fallback_position;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (s_status.state != PLAYER_ERROR) {
+        xSemaphoreGive(s_lock);
+        return;
+    }
+    s_error_logged = true;
+    event.buffer_percent = s_status.buffer_percent;
+    fallback_position = s_status.position;
+    strlcpy(event.item_id, s_status.item_id, sizeof(event.item_id));
+    strlcpy(event.episode_id, s_status.episode_id, sizeof(event.episode_id));
+    strlcpy(event.title, s_status.title, sizeof(event.title));
+    strlcpy(event.author, s_status.author, sizeof(event.author));
+    xSemaphoreGive(s_lock);
+
+    event.uptime_s = esp_timer_get_time() / 1000000;
+    event.position = s_have_session ? current_position() : fallback_position;
+    event.reason = s_failure_reason;
+    event.code = s_failure_code;
+    event.segment = s_failure_segment;
+    event.decode_errors = s_decode_errors;
+    event.local = s_local;
+    if (!storage_ready() || !s_playback_log_queue || xQueueSend(s_playback_log_queue, &event, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "playback error log not queued (SD unavailable or log queue full)");
+    }
 }
 
 /* ---------- control task ---------- */
@@ -666,11 +830,16 @@ static void control_task(void *arg)
 {
     s_last_tick_us = esp_timer_get_time();
     for (;;) {
+        // Notice an asynchronous pipeline failure before handling a queued tap that might replace
+        // the current book and clear its failure details.
+        update_status();
+        log_player_error();
         cmd_t c;
         if (xQueueReceive(s_cmds, &c, pdMS_TO_TICKS(250))) {
             handle(&c);
         }
         update_status();
+        log_player_error();
 
         int64_t now = esp_timer_get_time();
         save_volume_if_settled(now);
@@ -740,6 +909,14 @@ void player_init(void)
     xTaskCreatePinnedToCore(fetch_task, "abs_fetch", 8192, NULL, 5, &s_fetch_task, 0);
     xTaskCreatePinnedToCore(decode_task, "abs_decode", 16384, NULL, 6, &s_decode_task, 1);
     s_jobs = xQueueCreate(8, sizeof(sync_job_t));
+    s_playback_log_queue = xQueueCreate(4, sizeof(playback_log_event_t));
+    if (s_playback_log_queue &&
+        xTaskCreatePinnedToCoreWithCaps(playback_log_worker, "abs_playlog", 4096, NULL, 1, NULL, 0,
+                                       MALLOC_CAP_SPIRAM) != pdPASS) {
+        vQueueDelete(s_playback_log_queue);
+        s_playback_log_queue = NULL;
+        ESP_LOGW(TAG, "playback log worker unavailable");
+    }
     xTaskCreatePinnedToCore(control_task, "abs_ctrl", 8192, NULL, 4, NULL, 0);
     // Stack in PSRAM: network and SD work only, never the internal flash.
     xTaskCreatePinnedToCoreWithCaps(sync_worker, "abs_sync", 8192, NULL, 3, NULL, 0, MALLOC_CAP_SPIRAM);

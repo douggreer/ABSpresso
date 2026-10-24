@@ -224,6 +224,7 @@ static void refresh_page(void)
 
 void ui_show_page(ui_page_t page)
 {
+    if (search_visible()) ui_search_close();
     s_page = page;
     for (int i = 0; i < PAGE_COUNT; i++) {
         if (i == (int)page) lv_obj_remove_flag(s_pages[i], LV_OBJ_FLAG_HIDDEN);
@@ -400,6 +401,7 @@ void ui_init(void)
         lv_obj_add_event_cb(s_dock[i], round_hit_test, LV_EVENT_HIT_TEST, NULL);
     }
 
+    search_build(s_scr);
     sheet_build(s_scr);
     episodes_build(s_scr);
     libpicker_build(s_scr);
@@ -510,6 +512,18 @@ void ui_show_message(const char *msg)
     } else {
         lv_obj_add_flag(s_msg, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+void ui_search_open(bool by_author)
+{
+    for (int i = 0; i < PAGE_COUNT; i++) lv_obj_add_flag(s_dock[i], LV_OBJ_FLAG_HIDDEN);
+    search_open(by_author);
+}
+
+void ui_search_close(void)
+{
+    search_close();
+    for (int i = 0; i < PAGE_COUNT; i++) lv_obj_remove_flag(s_dock[i], LV_OBJ_FLAG_HIDDEN);
 }
 
 /* ---------- derived book lists ---------- */
@@ -634,6 +648,7 @@ void ui_set_books(const abs_book_t *books, int count)
 
     home_set_books();
     library_set_books();
+    search_refresh();
     ui_show_message(count ? NULL : "No books found");
 }
 

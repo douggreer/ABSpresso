@@ -243,7 +243,9 @@ void episodes_build(lv_obj_t *scr)
     lv_obj_set_style_border_width(s_list, 0, 0);
     lv_obj_set_style_pad_all(s_list, 0, 0);
     lv_obj_set_style_pad_row(s_list, 6, 0);
-    lv_obj_set_scrollbar_mode(s_list, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scrollbar_mode(s_list, LV_SCROLLBAR_MODE_ACTIVE);
+    lv_obj_set_style_bg_color(s_list, COLOR_ACCENT, LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_opa(s_list, LV_OPA_COVER, LV_PART_SCROLLBAR);
 
     lv_obj_add_flag(s_overlay, LV_OBJ_FLAG_HIDDEN);
 }

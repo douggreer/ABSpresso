@@ -274,6 +274,10 @@ esp_err_t board_display_init(lv_display_t **out_disp)
         lv_indev_set_read_cb(indev, touch_read);
         s_tp = tp;
         lv_indev_set_display(indev, disp);
+        // Let vertical lists take over after a small intentional drag. LVGL uses this value to
+        // suppress short clicks once the pointer has moved, so book taps remain taps when the
+        // finger stays nearly still.
+        lv_indev_set_scroll_limit(indev, 6);
         lvgl_port_unlock();
     } else {
         ESP_LOGE(TAG, "Touch init failed; continuing without touch");

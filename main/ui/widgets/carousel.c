@@ -15,11 +15,13 @@ typedef struct {
 } card_t;
 
 struct carousel {
-    lv_obj_t *root, *track, *title, *sub;
+    lv_obj_t *root, *track, *title, *sub, *drag_track, *drag_fill;
     card_t cards[3];  // previous, current, next
     const int *idx;
     int n;
     int pos;
+    int drag_start_x, drag_start_y, drag_track_width;
+    bool drag_active, swipe_consumed;
     bool animating;
 };
 
@@ -142,11 +144,66 @@ static void on_card_clicked(lv_event_t *e)
 {
     carousel_t *c = lv_event_get_user_data(e);
     lv_obj_t *target = lv_event_get_current_target(e);
+    if (c->swipe_consumed) {
+        c->swipe_consumed = false;
+        return;
+    }
     if (c->animating) return;
     if (target == c->cards[1].root) {
         ui_open_book(c->idx[c->pos]);
     } else {
         carousel_step(c, target == c->cards[0].root ? -1 : 1);
+    }
+}
+
+static void on_card_drag(lv_event_t *e)
+{
+    carousel_t *c = lv_event_get_user_data(e);
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_indev_t *indev = lv_indev_active();
+    if (code == LV_EVENT_PRESSED) {
+        c->swipe_consumed = false;
+        c->drag_active = indev != NULL;
+        if (c->drag_active) {
+            lv_point_t p;
+            lv_indev_get_point(indev, &p);
+            c->drag_start_x = p.x;
+            c->drag_start_y = p.y;
+        }
+        lv_obj_add_flag(c->drag_track, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    if (!c->drag_active) return;
+    if (!indev) {
+        if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+            c->drag_active = false;
+            lv_obj_add_flag(c->drag_track, LV_OBJ_FLAG_HIDDEN);
+        }
+        return;
+    }
+
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
+    int dx = p.x - c->drag_start_x;
+    int dy = p.y - c->drag_start_y;
+    int ax = abs(dx), ay = abs(dy);
+    if (code == LV_EVENT_PRESSING) {
+        if (ax >= 6 && ax > ay) {
+            lv_obj_remove_flag(c->drag_track, LV_OBJ_FLAG_HIDDEN);
+            float fraction = ax >= 20 ? 1.0f : ax / 20.0f;
+            int width = (int)(c->drag_track_width * fraction);
+            lv_obj_set_width(c->drag_fill, width > 0 ? width : 1);
+            lv_obj_align(c->drag_fill, dx < 0 ? LV_ALIGN_RIGHT_MID : LV_ALIGN_LEFT_MID, 0, 0);
+        }
+        return;
+    }
+    if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+        if (ax >= 20 && ax > ay) {
+            c->swipe_consumed = true;
+            carousel_step(c, dx < 0 ? 1 : -1);
+        }
+        c->drag_active = false;
+        lv_obj_add_flag(c->drag_track, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
@@ -180,6 +237,10 @@ carousel_t *carousel_create(lv_obj_t *parent, const carousel_cfg_t *cfg)
         // Short tap plays (or steps to a side card); long-press opens the details sheet.
         lv_obj_add_event_cb(card->root, on_card_clicked, LV_EVENT_SHORT_CLICKED, c);
         lv_obj_add_event_cb(card->root, on_card_long, LV_EVENT_LONG_PRESSED, c);
+        lv_obj_add_event_cb(card->root, on_card_drag, LV_EVENT_PRESSED, c);
+        lv_obj_add_event_cb(card->root, on_card_drag, LV_EVENT_PRESSING, c);
+        lv_obj_add_event_cb(card->root, on_card_drag, LV_EVENT_RELEASED, c);
+        lv_obj_add_event_cb(card->root, on_card_drag, LV_EVENT_PRESS_LOST, c);
 
         card->placeholder = ui_label(card->root, &ui_font_16, COLOR_MUTED, CARD_SIZE - 20);
         lv_label_set_long_mode(card->placeholder, LV_LABEL_LONG_WRAP);
@@ -197,6 +258,25 @@ carousel_t *carousel_create(lv_obj_t *parent, const carousel_cfg_t *cfg)
             lv_obj_set_style_text_opa(card->placeholder, LV_OPA_40, 0);
         }
     }
+
+    c->drag_track_width = cfg->width - 24;
+    c->drag_track = lv_obj_create(c->root);
+    lv_obj_remove_style_all(c->drag_track);
+    lv_obj_set_size(c->drag_track, c->drag_track_width, 4);
+    lv_obj_align(c->drag_track, LV_ALIGN_BOTTOM_MID, 0, -3);
+    lv_obj_set_style_radius(c->drag_track, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(c->drag_track, COLOR_MUTED, 0);
+    lv_obj_set_style_bg_opa(c->drag_track, LV_OPA_40, 0);
+    lv_obj_remove_flag(c->drag_track, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    c->drag_fill = lv_obj_create(c->drag_track);
+    lv_obj_remove_style_all(c->drag_fill);
+    lv_obj_set_size(c->drag_fill, 1, 4);
+    lv_obj_align(c->drag_fill, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_set_style_radius(c->drag_fill, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(c->drag_fill, COLOR_ACCENT, 0);
+    lv_obj_set_style_bg_opa(c->drag_fill, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(c->drag_fill, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(c->drag_track, LV_OBJ_FLAG_HIDDEN);
 
     // Fixed widths so long text can't spill toward the screen edge; it scrolls instead.
     c->title = ui_label(parent, &ui_font_16, COLOR_TEXT, cfg->title_w);

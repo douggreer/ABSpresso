@@ -1,8 +1,8 @@
 #pragma once
 
 // The bottom "<  Name  >" pill with a dot per item, used to switch between Home's shelves and the
-// Library's views. Tap an arrow or swipe left/right on the pill. The pill keeps its swipes (they
-// don't bubble to the page), so they never also move a carousel.
+// Library's views. Tap an arrow or drag at least 20 px left/right on the pill. A small progress cue
+// appears while dragging, and the swipe stays local to the pill.
 
 #include <stdbool.h>
 #include "lvgl.h"

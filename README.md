@@ -1,6 +1,12 @@
 <p align="center"><img src="docs/brand/banner.png" alt="ABSpresso: an espresso-sized Audiobookshelf player for an ESP32 with a round display"></p>
 
-# ABSpresso
+
+# SpotPear AI-BOX 1.28" Port of ABSpresso
+
+I created this fork of ABSpresso because I could not find the device it was built for (Waveshare 1.85" Dev Kit) in stock anywhere, and the retail price was quite high at $50-$60.  This version adapts [ABSpresso by Tomek Kent (@tomekent)](https://github.com/tomekent/ABSpresso)
+for SpotPear's 1.28-inch ESP32-S3-AI-BOX-V1.28. This device can be found for as low as $25 on Aliexpress.  I got it for $15 using coupons and coins.  The screen is a little smaller, so the UI had to be adapted somewhat.  It works great, and I thank the original developer for 99% of the code!
+
+## What is ABSpresso?
 
 An espresso-sized audiobook player for [Audiobookshelf](https://www.audiobookshelf.org/). It runs
 on an inexpensive ESP32-S3 board with a round touchscreen and a built-in speaker, streams
@@ -10,13 +16,7 @@ you can pick up where you left off here, on your phone or on the web.
 It's meant for the desk or the bedside table: a dedicated "carry on with my book" device, with no
 phone needed.
 
-## SpotPear ESP32-S3-AI-BOX-V1.28 port
-
-This version adapts [ABSpresso by Tomek Kent (@tomekent)](https://github.com/tomekent/ABSpresso)
-for SpotPear's 1.28-inch ESP32-S3-AI-BOX-V1.28. Upstream firmware binaries target the Waveshare
-ESP32-S3-Touch-LCD-1.85C and are **not compatible** with this board; build this port from source.
-
-### What changed in this port
+## What changed in this port
 
 - Replaced the Waveshare display and board setup with the SpotPear 240×240 GC9A01 display and
   CST816D touch controller.
@@ -25,6 +25,13 @@ ESP32-S3-Touch-LCD-1.85C and are **not compatible** with this board; build this 
 - Resized the original interface for 240×240 and enlarged the top navigation and bottom selector
   touch targets, plus key player controls, for easier use on the small screen.
 - Updated the build configuration and component list for the SpotPear hardware.
+- Added title and author search from the Home shelves. Author search lists matching names first,
+  then opens the selected author's books; long result titles stay on one line and keep their
+  beginning visible.
+- Made book and shelf scrolling easier to start, added a drag indicator, and lowered the swipe
+  distance needed to change a carousel or shelf.
+- Added an asynchronous, bounded playback-error log on the SD card to help diagnose failed
+  sessions, streams, local downloads, decoder errors, and audio-output errors.
 
 ### Credits and device status
 
@@ -52,7 +59,8 @@ See [PORTING.md](PORTING.md) for the SpotPear pin map, build steps, and first ha
 
 - **Streams from your server**: audiobooks and podcasts, in any format Audiobookshelf can serve.
   Progress syncs every 20 s and on pause, seek and stop.
-- **Home**: Continue Listening, Recently Added and Downloaded shelves of cover art.
+- **Home**: Continue Listening, Recently Added and Downloaded shelves of cover art, plus search by
+  title or author. Author matches open a list of that author's books.
 - **Library**: browse by cover, as an A-Z list of books, or by author. Drag the ring on the right
   edge to jump through the alphabet.
 - **Now Playing**: cover art backdrop, a progress arc to scrub through the chapter, a volume arc,
@@ -62,7 +70,8 @@ See [PORTING.md](PORTING.md) for the SpotPear pin map, build steps, and first ha
 - **Multiple libraries**: switch between the server's libraries from Settings.
 - **SD card (optional)**: caches the library and covers for instant start-up and offline
   browsing, and holds downloaded books for offline listening. Progress made offline is sent to the
-  server when it's back in reach.
+  server when it's back in reach. Playback failures are recorded to a small rotating log for later
+  diagnosis.
 - **Setup from your phone**: the device runs its own Wi-Fi network with a QR code to join. Sign
   in with your Audiobookshelf username and password; no API key needed.
 - **Battery aware**: battery level and charging state in the status row, a dimming screen, screen
@@ -166,7 +175,8 @@ and asks you to sign in again only if the server ends the session.
   readings have not been calibrated against a meter, and the latest larger touch targets still need
   a usability check.
 - Greek, Chinese/Japanese/Korean and emoji don't display.
-- Without an SD card, the first library load and covers take a few seconds after each start.
+- Without an SD card, the first library load and covers take a few seconds after each start, and
+  playback errors cannot be saved to the persistent log.
 - A few unusual JPEG covers can't be decoded and show a title card instead.
 - Podcast libraries show up to 150 episodes per show.
 - Changing a cover on the server isn't picked up until the SD cache is cleared.
@@ -247,6 +257,7 @@ keyed by item id, which is unique across the server.
 | `dl/<id>/index.bin` | End offset of each completed segment (seeking is one lookup) |
 | `dl/<id>/meta.json` | Duration and chapters, for playback without the server |
 | `dl/<id>/progress.json` | Local listening position, and whether the server still needs it |
+| `logs/playback.log` and `.1` / `.2` | Recent playback failures as JSON lines; rotated and size-limited |
 
 **Downloads** fetch the same transcoded segments the player streams, using a separate session
 (with its own device ID), one at a time in the background. A 1-hour book takes about 2 minutes.
