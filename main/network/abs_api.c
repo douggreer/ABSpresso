@@ -224,6 +224,48 @@ static double json_num(const cJSON *obj, const char *key)
     return cJSON_IsNumber(v) ? v->valuedouble : 0;
 }
 
+static void parse_book_series(const cJSON *meta, abs_book_t *book)
+{
+    const cJSON *series = cJSON_GetObjectItemCaseSensitive(meta, "series");
+    const char *series_name = json_str(meta, "seriesName");
+    int capacity = cJSON_IsArray(series) ? cJSON_GetArraySize(series)
+                   : (cJSON_IsString(series) || cJSON_IsObject(series) || (series_name && series_name[0])) ? 1 : 0;
+    if (capacity <= 0) return;
+
+    book->series = heap_caps_calloc(capacity, sizeof(char *), MALLOC_CAP_SPIRAM);
+    if (!book->series) return;
+
+    if (!cJSON_IsArray(series)) {
+        const char *name = cJSON_IsString(series) ? series->valuestring : json_str(series, "name");
+        if (!name) name = json_str(series, "series");
+        if (!name) name = series_name;
+        if (name && name[0]) {
+            book->series[0] = psram_strdup(name);
+            if (book->series[0]) book->series_count = 1;
+        }
+        return;
+    }
+
+    const cJSON *entry;
+    cJSON_ArrayForEach(entry, series) {
+        const char *name = cJSON_IsString(entry) ? entry->valuestring : json_str(entry, "name");
+        if (!name) name = json_str(entry, "series");
+        if (!name || !name[0]) continue;
+
+        bool duplicate = false;
+        for (int i = 0; i < book->series_count; i++) {
+            if (strcasecmp(book->series[i], name) == 0) duplicate = true;
+        }
+        if (duplicate) continue;
+        book->series[book->series_count] = psram_strdup(name);
+        if (book->series[book->series_count]) book->series_count++;
+    }
+    if (!book->series_count && series_name && series_name[0]) {
+        book->series[0] = psram_strdup(series_name);
+        if (book->series[0]) book->series_count = 1;
+    }
+}
+
 static int book_cmp(const void *pa, const void *pb)
 {
     const abs_book_t *a = pa, *b = pb;
@@ -257,6 +299,7 @@ esp_err_t abs_parse_books(const char *items_json, const char *me_json, abs_book_
             b->num_episodes = (int)json_num(media, "numEpisodes");
         } else {
             b->author = psram_strdup(json_str(meta, "authorName") ?: "");
+            parse_book_series(meta, b);
             b->duration = json_num(media, "duration");
         }
     }
@@ -502,6 +545,8 @@ void abs_free_books(abs_book_t *books, int count)
         free(books[i].title);
         free(books[i].sort_title);
         free(books[i].author);
+        for (int j = 0; j < books[i].series_count; j++) free(books[i].series[j]);
+        free(books[i].series);
     }
     free(books);
 }

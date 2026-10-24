@@ -1,14 +1,25 @@
-// Full-screen local title/author search for the round 240x240 display.
+// Full-screen local title, author, and series search for the round 240x240 display.
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include "esp_log.h"
 #include "ui_priv.h"
 
 #define TITLE_RESULT_LIMIT 12
+static const char *TAG = "ui_search";
 
-static lv_obj_t *s_overlay, *s_back, *s_query, *s_author_title, *s_results, *s_keyboard;
-static bool s_visible, s_by_author, s_author_books_view;
+static lv_obj_t *s_overlay, *s_back, *s_query, *s_detail_title, *s_results, *s_keyboard;
+static bool s_visible, s_detail_view;
+static ui_search_mode_t s_mode;
+static char *s_selected_detail_name;
+
+static void clear_selected_detail(void)
+{
+    free(s_selected_detail_name);
+    s_selected_detail_name = NULL;
+}
 
 static bool contains_ci(const char *text, const char *query)
 {
@@ -20,14 +31,38 @@ static bool contains_ci(const char *text, const char *query)
     return false;
 }
 
-static int selected_author_index(void)
+static int selected_group_index(void)
 {
-    const char *selected_name = lv_label_get_text(s_author_title);
-    if (!selected_name || !selected_name[0]) return -1;
-    for (int i = 0; i < g_author_count; i++) {
-        if (strcasecmp(g_authors[i].name, selected_name) == 0) return i;
+    if (!s_selected_detail_name || !s_selected_detail_name[0]) return -1;
+    if (s_mode == UI_SEARCH_AUTHOR) {
+        for (int i = 0; i < g_author_count; i++) {
+            if (strcasecmp(g_authors[i].name, s_selected_detail_name) == 0) return i;
+        }
+    } else if (s_mode == UI_SEARCH_SERIES) {
+        for (int i = 0; i < g_series_count; i++) {
+            if (strcasecmp(g_series[i].name, s_selected_detail_name) == 0) return i;
+        }
     }
     return -1;
+}
+
+static const book_list_t *selected_group_books(int index)
+{
+    if (s_mode == UI_SEARCH_AUTHOR && index >= 0 && index < g_author_count) return &g_authors[index].books;
+    if (s_mode == UI_SEARCH_SERIES && index >= 0 && index < g_series_count) return &g_series[index].books;
+    return NULL;
+}
+
+static const char *selected_group_name(int index)
+{
+    if (s_mode == UI_SEARCH_AUTHOR && index >= 0 && index < g_author_count) return g_authors[index].name;
+    if (s_mode == UI_SEARCH_SERIES && index >= 0 && index < g_series_count) return g_series[index].name;
+    return NULL;
+}
+
+static int selected_group_count(void)
+{
+    return s_mode == UI_SEARCH_AUTHOR ? g_author_count : g_series_count;
 }
 
 static void add_empty_message(const char *text)
@@ -71,24 +106,40 @@ static void add_book_result(int index)
     lv_obj_add_event_cb(row, on_book_result, LV_EVENT_CLICKED, (void *)(intptr_t)index);
 }
 
-static void on_author_result(lv_event_t *e)
+static void open_group_detail(int index)
 {
-    int index = (int)(intptr_t)lv_event_get_user_data(e);
-    if (index < 0 || index >= g_author_count) return;
+    const char *name = selected_group_name(index);
+    if (!name) return;
+    size_t name_len = strlen(name);
+    char *copy = malloc(name_len + 1);
+    if (!copy) return;
+    memcpy(copy, name, name_len + 1);
+    clear_selected_detail();
+    s_selected_detail_name = copy;
 
-    s_author_books_view = true;
-    lv_label_set_text(s_author_title, g_authors[index].name);
+    s_detail_view = true;
+    lv_label_set_text(s_detail_title, s_selected_detail_name);
     lv_obj_add_flag(s_query, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_keyboard, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(s_author_title, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_detail_title, LV_OBJ_FLAG_HIDDEN);
     ui_obj_set_pos_raw(s_results, 16, 62);
     ui_obj_set_size_raw(s_results, 208, 172);
     search_refresh();
 }
 
-static void add_author_result(int index)
+static void on_group_result(lv_event_t *e)
 {
-    const author_t *author = &g_authors[index];
+    int index = (int)(intptr_t)lv_event_get_user_data(e);
+    if (index < 0 || index >= selected_group_count()) return;
+    open_group_detail(index);
+}
+
+static void add_group_result(int index)
+{
+    const char *name_text = selected_group_name(index);
+    const book_list_t *books = selected_group_books(index);
+    if (!name_text || !books) return;
+
     lv_obj_t *row = lv_button_create(s_results);
     ui_obj_set_size_raw(row, 200, 30);
     lv_obj_set_style_bg_color(row, COLOR_CARD, 0);
@@ -98,7 +149,7 @@ static void add_author_result(int index)
     lv_obj_set_style_pad_all(row, 2, 0);
 
     lv_obj_t *name = lv_label_create(row);
-    lv_label_set_text(name, author->name);
+    lv_label_set_text(name, name_text);
     lv_obj_set_style_text_font(name, &ui_font_14, 0);
     lv_obj_set_style_text_color(name, COLOR_TEXT, 0);
     lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
@@ -106,14 +157,26 @@ static void add_author_result(int index)
     lv_obj_align(name, LV_ALIGN_LEFT_MID, 8, 0);
 
     char count[16];
-    snprintf(count, sizeof(count), "%d", author->books.count);
+    snprintf(count, sizeof(count), "%d", books->count);
     lv_obj_t *book_count = lv_label_create(row);
     lv_label_set_text(book_count, count);
     lv_obj_set_style_text_font(book_count, &ui_font_14, 0);
     lv_obj_set_style_text_color(book_count, COLOR_MUTED, 0);
     lv_obj_align(book_count, LV_ALIGN_RIGHT_MID, -8, 0);
 
-    lv_obj_add_event_cb(row, on_author_result, LV_EVENT_CLICKED, (void *)(intptr_t)index);
+    lv_obj_add_event_cb(row, on_group_result, LV_EVENT_CLICKED, (void *)(intptr_t)index);
+}
+
+static void restore_search_view(void)
+{
+    s_detail_view = false;
+    clear_selected_detail();
+    lv_label_set_text(s_detail_title, "");
+    lv_obj_add_flag(s_detail_title, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_query, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_keyboard, LV_OBJ_FLAG_HIDDEN);
+    ui_obj_set_pos_raw(s_results, 20, 66);
+    ui_obj_set_size_raw(s_results, 200, 62);
 }
 
 static void refresh_results(void)
@@ -121,23 +184,22 @@ static void refresh_results(void)
     if (!s_results) return;
     lv_obj_clean(s_results);
 
-    if (s_author_books_view) {
-        int author = selected_author_index();
-        if (author < 0) {
-            s_author_books_view = false;
-            lv_label_set_text(s_author_title, "");
-            lv_obj_add_flag(s_author_title, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_remove_flag(s_query, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_remove_flag(s_keyboard, LV_OBJ_FLAG_HIDDEN);
-            ui_obj_set_pos_raw(s_results, 20, 66);
-            ui_obj_set_size_raw(s_results, 200, 62);
-            add_empty_message("Author list updated. Search again.");
+    if (s_detail_view) {
+        int group = selected_group_index();
+        if (group < 0) {
+            ESP_LOGW(TAG, "Selected %s '%s' disappeared from the refreshed catalog",
+                     s_mode == UI_SEARCH_AUTHOR ? "author" : "series",
+                     s_selected_detail_name ? s_selected_detail_name : "(unknown)");
+            restore_search_view();
+            add_empty_message("Library changed. Search again.");
             return;
         }
 
-        const book_list_t *books = &g_authors[author].books;
-        for (int i = 0; i < books->count; i++) add_book_result(books->idx[i]);
-        if (!books->count) add_empty_message("No books for this author");
+        const book_list_t *books = selected_group_books(group);
+        if (books) {
+            for (int i = 0; i < books->count; i++) add_book_result(books->idx[i]);
+            if (!books->count) add_empty_message("No books in this group");
+        }
         lv_obj_scroll_to_y(s_results, 0, LV_ANIM_OFF);
         return;
     }
@@ -148,16 +210,17 @@ static void refresh_results(void)
         return;
     }
 
-    if (s_by_author) {
-        int matches = 0;
-        for (int i = 0; i < g_author_count; i++) {
-            if (!contains_ci(g_authors[i].name, query)) continue;
-            add_author_result(i);
+    int matches = 0;
+    if (s_mode == UI_SEARCH_AUTHOR || s_mode == UI_SEARCH_SERIES) {
+        int count = selected_group_count();
+        for (int i = 0; i < count; i++) {
+            const char *name = selected_group_name(i);
+            if (!contains_ci(name, query)) continue;
+            add_group_result(i);
             matches++;
         }
-        if (!matches) add_empty_message("No matching authors");
+        if (!matches) add_empty_message(s_mode == UI_SEARCH_AUTHOR ? "No matching authors" : "No matching series");
     } else {
-        int matches = 0;
         for (int i = 0; i < g_book_count; i++) {
             if (!contains_ci(g_books[i].title, query)) continue;
             if (matches < TITLE_RESULT_LIMIT) add_book_result(i);
@@ -177,18 +240,11 @@ static void on_query_changed(lv_event_t *e)
 static void on_back(lv_event_t *e)
 {
     (void)e;
-    if (!s_author_books_view) {
+    if (!s_detail_view) {
         ui_search_close();
         return;
     }
-
-    s_author_books_view = false;
-    lv_label_set_text(s_author_title, "");
-    lv_obj_add_flag(s_author_title, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(s_query, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(s_keyboard, LV_OBJ_FLAG_HIDDEN);
-    ui_obj_set_pos_raw(s_results, 20, 66);
-    ui_obj_set_size_raw(s_results, 200, 62);
+    restore_search_view();
     refresh_results();
 }
 
@@ -212,11 +268,11 @@ void search_build(lv_obj_t *scr)
     lv_obj_center(back_label);
     lv_obj_add_event_cb(s_back, on_back, LV_EVENT_CLICKED, NULL);
 
-    s_author_title = ui_label(s_overlay, &ui_font_16, COLOR_TEXT, 164);
-    ui_obj_set_pos_raw(s_author_title, 38, 34);
-    ui_obj_set_size_raw(s_author_title, 164, 24);
-    lv_label_set_long_mode(s_author_title, LV_LABEL_LONG_DOT);
-    lv_obj_add_flag(s_author_title, LV_OBJ_FLAG_HIDDEN);
+    s_detail_title = ui_label(s_overlay, &ui_font_16, COLOR_TEXT, 164);
+    ui_obj_set_pos_raw(s_detail_title, 38, 34);
+    ui_obj_set_size_raw(s_detail_title, 164, 24);
+    lv_label_set_long_mode(s_detail_title, LV_LABEL_LONG_DOT);
+    lv_obj_add_flag(s_detail_title, LV_OBJ_FLAG_HIDDEN);
 
     s_query = lv_textarea_create(s_overlay);
     ui_obj_set_pos_raw(s_query, 45, 34);
@@ -271,19 +327,23 @@ void search_build(lv_obj_t *scr)
     lv_obj_add_flag(s_overlay, LV_OBJ_FLAG_HIDDEN);
 }
 
-void search_open(bool by_author)
+void search_open(ui_search_mode_t mode)
 {
     if (!s_overlay) return;
-    s_by_author = by_author;
+    s_mode = mode;
     s_visible = true;
-    s_author_books_view = false;
-    lv_label_set_text(s_author_title, "");
-    lv_obj_add_flag(s_author_title, LV_OBJ_FLAG_HIDDEN);
+    s_detail_view = false;
+    clear_selected_detail();
+    lv_label_set_text(s_detail_title, "");
+    lv_obj_add_flag(s_detail_title, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(s_query, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(s_keyboard, LV_OBJ_FLAG_HIDDEN);
     ui_obj_set_pos_raw(s_results, 20, 66);
     ui_obj_set_size_raw(s_results, 200, 62);
-    lv_textarea_set_placeholder_text(s_query, by_author ? "Search authors" : "Search titles");
+    const char *placeholder = mode == UI_SEARCH_AUTHOR ? "Search authors"
+                              : mode == UI_SEARCH_SERIES ? "Search series"
+                                                         : "Search titles";
+    lv_textarea_set_placeholder_text(s_query, placeholder);
     lv_textarea_set_text(s_query, "");
     lv_obj_add_state(s_query, LV_STATE_FOCUSED);
     lv_textarea_set_cursor_pos(s_query, LV_TEXTAREA_CURSOR_LAST);
@@ -297,8 +357,9 @@ void search_close(void)
 {
     if (!s_overlay) return;
     s_visible = false;
-    s_author_books_view = false;
-    lv_label_set_text(s_author_title, "");
+    s_detail_view = false;
+    clear_selected_detail();
+    lv_label_set_text(s_detail_title, "");
     lv_keyboard_set_textarea(s_keyboard, NULL);
     lv_obj_remove_state(s_query, LV_STATE_FOCUSED);
     lv_obj_add_flag(s_overlay, LV_OBJ_FLAG_HIDDEN);

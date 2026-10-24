@@ -11,9 +11,9 @@ typedef struct {
 } row_t;
 
 static const char *const s_names[] = {
-    "Continue Listening", "Search by Title", "Search by Author", "Recently Added", "Downloaded",
+    "Continue Listening", "Search by Title", "Search by Series", "Search by Author", "Recently Added", "Downloaded",
 };
-static row_t s_rows[] = {{&g_continue, 0}, {NULL, 0}, {NULL, 0}, {&g_recent, 0}, {&g_downloaded, 0}};
+static row_t s_rows[] = {{&g_continue, 0}, {NULL, 0}, {NULL, 0}, {NULL, 0}, {&g_recent, 0}, {&g_downloaded, 0}};
 #define ROW_COUNT (int)(sizeof(s_rows) / sizeof(s_rows[0]))
 
 static lv_obj_t *s_group, *s_empty, *s_search_prompt, *s_search_title, *s_search_hint;
@@ -25,7 +25,7 @@ static int s_row = -1;
 static bool row_has_books(int r)
 {
     if (r < 0 || r >= ROW_COUNT) return false;
-    if (r == 1 || r == 2) return true;
+    if (r >= 1 && r <= 3) return true;
     return s_rows[r].books && s_rows[r].books->count > 0;
 }
 
@@ -37,8 +37,8 @@ static bool row_has_carousel(int r)
 static int first_row(void)
 {
     if (row_has_books(0)) return 0;
-    if (row_has_books(3)) return 3;
     if (row_has_books(4)) return 4;
+    if (row_has_books(5)) return 5;
     return 1;
 }
 
@@ -66,9 +66,10 @@ static void show_row(int r, int dir)
     if (!row_has_carousel(r)) {
         lv_obj_add_flag(s_group, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(s_search_prompt, LV_OBJ_FLAG_HIDDEN);
-        bool by_author = r == 2;
-        lv_label_set_text(s_search_title, by_author ? "Search by author" : "Search by title");
-        lv_label_set_text(s_search_hint, by_author ? "Find books by author" : "Find books by title");
+        const char *title = r == 2 ? "Search by series" : (r == 3 ? "Search by author" : "Search by title");
+        const char *hint = r == 2 ? "Find books in a series" : (r == 3 ? "Find books by author" : "Find books by title");
+        lv_label_set_text(s_search_title, title);
+        lv_label_set_text(s_search_hint, hint);
         lv_label_set_text(s_search_button_text, "Tap to search");
         return;
     }
@@ -98,7 +99,7 @@ static void on_switch(int index, int dir)
 static void on_search(lv_event_t *e)
 {
     (void)e;
-    ui_search_open(s_row == 2);
+    ui_search_open(s_row == 2 ? UI_SEARCH_SERIES : (s_row == 3 ? UI_SEARCH_AUTHOR : UI_SEARCH_TITLE));
 }
 
 void home_build(lv_obj_t *page)

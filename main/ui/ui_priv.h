@@ -90,6 +90,11 @@ typedef struct {
     book_list_t books;
 } author_t;
 
+typedef struct {
+    char *name;
+    book_list_t books;
+} series_t;
+
 extern const abs_book_t *g_books;
 extern int g_book_count;
 extern book_list_t g_alpha;      // all books A-Z
@@ -98,6 +103,8 @@ extern book_list_t g_recent;     // newest additions first
 extern book_list_t g_downloaded; // on the SD card or downloading, A-Z
 extern author_t *g_authors;      // A-Z by surname
 extern int g_author_count;
+extern series_t *g_series;       // A-Z by series name
+extern int g_series_count;
 
 /* helpers (ui.c) */
 lv_obj_t *ui_round_button(lv_obj_t *parent, int size, const char *text, const lv_font_t *font, lv_event_cb_t cb,
@@ -162,9 +169,10 @@ void home_refresh(void);
 // The shelves' contents changed (e.g. a download was added or removed).
 void home_lists_changed(void);
 // The Home shelves open this full-screen live search overlay.
-void ui_search_open(bool by_author);
+typedef enum { UI_SEARCH_TITLE, UI_SEARCH_AUTHOR, UI_SEARCH_SERIES } ui_search_mode_t;
+void ui_search_open(ui_search_mode_t mode);
 void ui_search_close(void);
-void search_open(bool by_author);
+void search_open(ui_search_mode_t mode);
 void search_close(void);
 void search_build(lv_obj_t *scr);
 void search_refresh(void);

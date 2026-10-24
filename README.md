@@ -25,9 +25,10 @@ phone needed.
 - Resized the original interface for 240×240 and enlarged the top navigation and bottom selector
   touch targets, plus key player controls, for easier use on the small screen.
 - Updated the build configuration and component list for the SpotPear hardware.
-- Added title and author search from the Home shelves. Author search lists matching names first,
-  then opens the selected author's books; long result titles stay on one line and keep their
-  beginning visible.
+- Added title, author, and series search from Home. Author search lists matching names first, then
+  opens the selected author's books. Series search groups numbered entries under one series name
+  and opens that series' books in numerical order. Long result titles stay on one line and keep
+  their beginning visible.
 - Made book and shelf scrolling easier to start, added a drag indicator, and lowered the swipe
   distance needed to change a carousel or shelf.
 - Added an asynchronous, bounded playback-error log on the SD card to help diagnose failed
@@ -59,8 +60,9 @@ See [PORTING.md](PORTING.md) for the SpotPear pin map, build steps, and first ha
 
 - **Streams from your server**: audiobooks and podcasts, in any format Audiobookshelf can serve.
   Progress syncs every 20 s and on pause, seek and stop.
-- **Home**: Continue Listening, Recently Added and Downloaded shelves of cover art, plus search by
-  title or author. Author matches open a list of that author's books.
+- **Home**: Continue Listening, Search by Title, Search by Series, Search by Author, Recently Added,
+  and Downloaded. Series matches show one row per series; selecting it opens the books in series
+  number order. Author matches open a list of that author's books.
 - **Library**: browse by cover, as an A-Z list of books, or by author. Drag the ring on the right
   edge to jump through the alphabet.
 - **Now Playing**: cover art backdrop, a progress arc to scrub through the chapter, a volume arc,
@@ -163,7 +165,7 @@ and asks you to sign in again only if the server ends the session.
 - **Better battery readings**: calibrate the voltage curve against a real discharge, and detect
   charging directly (the charger's status pin isn't connected to the ESP32 on this board).
 - **Sleep timer** and **playback speed** on Now Playing.
-- **Chapter list**, and **series** and **collections** in the Library.
+- **Chapter list** and **collections** in the Library.
 - **Downloading podcast episodes** (books can already be downloaded).
 - **Over-the-air updates** from GitHub releases.
 - **Listening sessions for offline playback**, so it counts in the server's stats.

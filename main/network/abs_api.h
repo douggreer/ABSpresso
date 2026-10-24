@@ -12,6 +12,8 @@ typedef struct {
     char *title;
     char *sort_title;      // title without a leading "The"/"A" (server-provided), for A-Z
     char *author;          // may list several authors separated by ", "
+    char **series;         // series names from media.metadata.series (a book may have several)
+    int series_count;
     double duration;
     double current_time;   // saved progress, seconds
     float progress;        // 0..1
