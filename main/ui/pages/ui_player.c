@@ -324,9 +324,9 @@ void playing_build(lv_obj_t *page)
     lv_obj_set_style_text_color(s_play_label, lv_color_black(), 0);
     lv_obj_align(play, LV_ALIGN_CENTER, 0, 4);
 
-    lv_obj_t *b30 = ui_round_button(page, 60, "", &ui_font_20, on_skip, (void *)(intptr_t)-1);
+    lv_obj_t *b30 = ui_round_button(page, 72, "", &ui_font_20, on_skip, (void *)(intptr_t)-1);
     lv_obj_align(b30, LV_ALIGN_CENTER, -94, 4);
-    lv_obj_t *f30 = ui_round_button(page, 60, "", &ui_font_20, on_skip, (void *)(intptr_t)1);
+    lv_obj_t *f30 = ui_round_button(page, 72, "", &ui_font_20, on_skip, (void *)(intptr_t)1);
     lv_obj_align(f30, LV_ALIGN_CENTER, 94, 4);
     s_skip_lbl[0] = lv_obj_get_child(b30, 0);
     s_skip_lbl[1] = lv_obj_get_child(f30, 0);
@@ -337,8 +337,8 @@ void playing_build(lv_obj_t *page)
     s_remaining = ui_label(page, &ui_font_14, COLOR_MUTED, 220);
     lv_obj_align(s_remaining, LV_ALIGN_CENTER, 0, 79);
 
-    lv_obj_t *prev = ui_round_button(page, 38, LV_SYMBOL_PREV, &ui_font_16, on_prev_ch, NULL);
-    lv_obj_align(prev, LV_ALIGN_CENTER, -30, 114);
-    lv_obj_t *next = ui_round_button(page, 38, LV_SYMBOL_NEXT, &ui_font_16, on_next_ch, NULL);
-    lv_obj_align(next, LV_ALIGN_CENTER, 30, 114);
+    lv_obj_t *prev = ui_round_button(page, 46, LV_SYMBOL_PREV, &ui_font_16, on_prev_ch, NULL);
+    lv_obj_align(prev, LV_ALIGN_CENTER, -34, 114);
+    lv_obj_t *next = ui_round_button(page, 46, LV_SYMBOL_NEXT, &ui_font_16, on_next_ch, NULL);
+    lv_obj_align(next, LV_ALIGN_CENTER, 34, 114);
 }

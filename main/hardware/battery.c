@@ -14,8 +14,8 @@
 
 static const char *TAG = "battery";
 
-#define ADC_CH        ADC_CHANNEL_7  // GPIO8
-#define DIVIDER       3.0f           // 100k / (100k + 200k)
+#define ADC_CH        ADC_CHANNEL_0  // GPIO1
+#define DIVIDER       2.0f           // SpotPear schematic: 100k / 100k divider
 #define SAMPLE_MS     1000
 #define HISTORY_EVERY 10             // samples between history entries (10 s)
 #define HISTORY_LEN   18             // 3 minutes of history

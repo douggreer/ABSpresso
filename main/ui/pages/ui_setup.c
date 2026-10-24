@@ -66,7 +66,7 @@ void setup_build(lv_obj_t *scr)
 
     // Dark modules on a light background, with a quiet zone, so phone cameras read it easily.
     s_qr = lv_qrcode_create(s_overlay);
-    lv_qrcode_set_size(s_qr, 118);
+    lv_qrcode_set_size(s_qr, UI_PX(118));
     lv_qrcode_set_dark_color(s_qr, lv_color_black());
     lv_qrcode_set_light_color(s_qr, lv_color_white());
     lv_obj_set_style_border_color(s_qr, lv_color_white(), 0);

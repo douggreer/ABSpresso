@@ -1,21 +1,52 @@
-<p align="center"><img src="docs/brand/banner.png" alt="ABSpresso: an espresso-sized Audiobookshelf player for an ESP32 with a 1.85-inch round display"></p>
+<p align="center"><img src="docs/brand/banner.png" alt="ABSpresso: an espresso-sized Audiobookshelf player for an ESP32 with a round display"></p>
 
-# ABSpresso
+
+# SpotPear AI-BOX 1.28" Port of ABSpresso
+
+I created this fork of ABSpresso because I could not find the device it was built for (Waveshare 1.85" Dev Kit) in stock anywhere, and the retail price was quite high at $50-$60.  This version adapts [ABSpresso by Tomek Kent (@tomekent)](https://github.com/tomekent/ABSpresso)
+for SpotPear's 1.28-inch ESP32-S3-AI-BOX-V1.28. This device can be found for as low as $25 on Aliexpress.  I got it for $15 using coupons and coins.  The screen is a little smaller, so the UI had to be adapted somewhat.  It works great, and I thank the original developer for 99% of the code!
+
+## What is ABSpresso?
 
 An espresso-sized audiobook player for [Audiobookshelf](https://www.audiobookshelf.org/). It runs
-on an inexpensive ESP32-S3 board with a 1.85" round touchscreen and a built-in speaker, streams
+on an inexpensive ESP32-S3 board with a round touchscreen and a built-in speaker, streams
 your books and podcasts over Wi-Fi, and keeps your listening progress in sync with the server, so
 you can pick up where you left off here, on your phone or on the web.
 
 It's meant for the desk or the bedside table: a dedicated "carry on with my book" device, with no
 phone needed.
 
-**[Download the latest release](https://github.com/tomekent/ABSpresso/releases/latest)**
+## What changed in this port
 
-> **Disclaimer:** this project was created with [Claude Code](https://claude.com/claude-code),
-> Anthropic's AI coding agent, working directly against the hardware: building, flashing and
-> reading the serial logs with ESP-IDF to bring up the board, the audio pipeline and the UI. It
-> has only been tested on the one board described below; review it before relying on it.
+- Replaced the Waveshare display and board setup with the SpotPear 240×240 GC9A01 display and
+  CST816D touch controller.
+- Adapted audio, SD card, battery sensing, buttons, and GPIO assignments to the SpotPear schematic.
+- Corrected the display's mirrored native orientation while preserving touch coordinates.
+- Resized the original interface for 240×240 and enlarged the top navigation and bottom selector
+  touch targets, plus key player controls, for easier use on the small screen.
+- Updated the build configuration and component list for the SpotPear hardware.
+
+### Credits and device status
+
+The original ABSpresso project is by **Tomek Kent (@tomekent)**; see the
+[upstream project](https://github.com/tomekent/ABSpresso). This SpotPear adaptation and its code
+updates were made with **OpenAI Codex**. The device owner compiled and flashed the firmware and
+reports successful Audiobookshelf use, working display and touch, and streaming with a microSD card
+either inserted or removed. The enlarged touch targets are included in the latest flashed update;
+their usability still merits a hands-on check.
+
+Official device references:
+[SpotPear product wiki](https://spotpear.com/index.php/wiki/ESP32-S3-N16R8-AI-DeepSeek-XiaoZhi-XiaGe-Qwen-DouBao-1.28-inch-Round-LCD-BOX-TouchScreen.html) ·
+[SpotPear board schematic (PDF)](https://cdn.static.spotpear.com/uploads/picture/learn/ESP32/ESP32-S3-LCD-1.28-BOX-THIN/ESP32S3-1.28inch-BOX.pdf).
+
+**License status:** The upstream repository currently has no `LICENSE` file. GitHub permits public
+repositories to be viewed and forked within GitHub, but that is not a general software reuse
+license. This port adds no license; ask the original author for permission before distributing the
+code outside GitHub or telling others they may reuse or modify it. See GitHub's
+[Terms of Service](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service)
+and [No License guidance](https://choosealicense.com/no-permission/).
+
+See [PORTING.md](PORTING.md) for the SpotPear pin map, build steps, and first hardware checks.
 
 ## Features
 
@@ -41,7 +72,8 @@ phone needed.
 
 ## Screenshots
 
-Captured on the device itself.
+These are upstream screenshots captured on the original 360×360 Waveshare board; the SpotPear
+port scales the layout for its 240×240 screen.
 
 | Home | Recently Added | Library: covers | Library: books |
 | :---: | :---: | :---: | :---: |
@@ -57,56 +89,28 @@ Captured on the device itself.
 
 ### What you need
 
-- A **[Waveshare ESP32-S3-Touch-LCD-1.85C](https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.85C)**
-  (16 MB flash, 8 MB PSRAM). Both the **V1** and **V2** audio hardware are supported and detected
-  automatically; see [Hardware](#hardware).
+- A **SpotPear ESP32-S3-AI-BOX-V1.28** (ESP32-S3, 16 MB flash, 8 MB PSRAM). The port targets its
+  GC9A01 display and ES8311 / NS4150B audio hardware; see [Hardware](#hardware).
 - An **Audiobookshelf server** that the device can reach over 2.4 GHz Wi-Fi.
-- Optional: a microSD card (FAT formatted) for caching and downloads, and a 3.7 V LiPo battery
-  with an MX1.25 connector.
+- Optional: a FAT-formatted microSD card for caching and downloads, and a 3.7 V LiPo battery.
 
-### Option 1: flash a release
+### Build the SpotPear port from source
 
-Download the files from the **[latest release](https://github.com/tomekent/ABSpresso/releases/latest)**
-(currently [v0.1.1](https://github.com/tomekent/ABSpresso/releases/tag/v0.1.1)):
+You need [ESP-IDF v5.5.6](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32s3/get-started/).
+This port was built with **ESP-IDF 5.5.6**. LVGL and the other components are fetched on the first
+build.
 
-- `abspresso-<version>-full.bin`: a single image for a **new device**. It also clears saved
-  settings.
-- `abspresso-<version>-parts.zip`: separate files for **updating** a device while keeping its
-  Wi-Fi and sign-in.
+From an ESP-IDF PowerShell with the environment exported, open this project folder and run:
 
-**In a browser** (Chrome or Edge): open Espressif's [ESP Tool](https://espressif.github.io/esptool-js/),
-connect to the board, add the `-full.bin` file at address `0x0`, and program.
-
-**With [esptool](https://docs.espressif.com/projects/esptool/)** (`pip install esptool`):
-
-```sh
-# New device
-esptool.py --chip esp32s3 -b 460800 write_flash 0x0 abspresso-v0.1.1-full.bin
-
-# Update, keeping settings (in the unzipped parts folder)
-esptool.py --chip esp32s3 -b 460800 write_flash --flash_mode dio --flash_freq 80m --flash_size 16MB \
-    0x0 bootloader.bin 0x8000 partition-table.bin 0x10000 abspresso.bin
+```powershell
+idf.py set-target esp32s3   # first time only
+idf.py build
+idf.py -p COMx flash monitor   # replace COMx with the board's USB serial port, e.g. COM3
 ```
 
-If the board isn't detected, hold **BOOT**, press **RST**, release BOOT, and try again. Press RST
-after flashing.
-
-### Option 2: build from source
-
-You need [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/get-started/)
-**v5.5** (developed on 5.5.2). LVGL and the other components are fetched on the first build.
-
-```sh
-git clone https://github.com/tomekent/ABSpresso.git && cd ABSpresso
-. $IDF_PATH/export.sh
-idf.py set-target esp32s3     # first time only
-idf.py -p /dev/tty.usbmodem1101 flash monitor   # your port may differ
-```
-
-On macOS, if `export.sh` picks a Python without the IDF virtualenv, set it first, e.g.
-`export IDF_PYTHON_ENV_PATH=~/.espressif/python_env/idf5.5_py3.14_env`.
-
-Reflashing keeps your settings; `idf.py erase-flash` clears them.
+The first build downloads LVGL, the GC9A01 panel driver and other ESP-IDF components. If the board
+isn't detected, hold **BOOT**, press **RST**, release BOOT, then retry. `idf.py erase-flash` clears
+saved settings; normal reflashing keeps them.
 
 ## First-time setup
 
@@ -157,7 +161,10 @@ and asks you to sign in again only if the server ends the session.
 
 ## Limitations
 
-- Tested on one V1 board and one V2 board. V2 support covers playback only; its microphones are unused.
+- This port has been built and flashed on the SpotPear board. Its owner reports working Audiobookshelf
+  streaming, display, touch, and SD-card operation both with a card inserted and removed. Battery
+  readings have not been calibrated against a meter, and the latest larger touch targets still need
+  a usability check.
 - Greek, Chinese/Japanese/Korean and emoji don't display.
 - Without an SD card, the first library load and covers take a few seconds after each start.
 - A few unusual JPEG covers can't be decoded and show a title card instead.
@@ -170,40 +177,38 @@ and asks you to sign in again only if the server ends the session.
 
 ### Hardware
 
-**[Waveshare ESP32-S3-Touch-LCD-1.85C](https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.85C)**, **V1 and V2 revisions**:
+**SpotPear ESP32-S3-AI-BOX-V1.28**:
 
 | Part | Details |
 | --- | --- |
 | SoC | ESP32-S3R8, dual-core 240 MHz, Wi-Fi, Bluetooth LE |
 | Memory | 8 MB octal PSRAM, 16 MB flash |
-| Display | 1.85" round 360×360 IPS, ST77916 over QSPI |
-| Touch | CST816T capacitive (I2C) |
+| Display | 1.28" round 240×240 IPS, GC9A01 over SPI |
+| Touch | CST816D capacitive (I2C) |
 | Storage | microSD slot (1-bit SDMMC) |
-| Audio | V1: PCM5101 I2S DAC + NS8002 amplifier. V2: ES8311 codec + NS4150B amplifier (ES7210 mic ADC unused). Onboard speaker |
-| IO expander | TCA9554 (LCD/touch resets, amp enable) |
-| Battery | MX1.25 LiPo connector, ETA6098 charger, voltage on GPIO8 (1:3 divider) |
+| Audio | ES8311 codec + NS4150B amplifier, onboard speaker |
+| Battery | PL4054 charger, battery voltage on GPIO1 through a 1:2 divider |
 
 Pin assignments (see `main/hardware/board.c`):
 
 | Function | GPIO |
 | --- | --- |
-| I2C SDA / SCL (touch, expander, RTC) | 11 / 10 |
-| LCD QSPI SCK, D0–D3, CS | 40, 46, 45, 42, 41, 21 |
-| LCD backlight (PWM) | 5 |
-| Touch interrupt | 4 |
-| I2S BCK / LRCK / DOUT (to PCM5101 or ES8311) | 48 / 38 / 47 |
-| I2S MCLK (V2 only) | 2 |
-| Amplifier enable (V2 only) | 15 |
-| LCD reset, touch reset | expander pins EXIO2, EXIO1 |
-| microSD CLK / CMD / D0 | 14 / 17 / 16 |
-| Battery voltage (ADC1 ch7) | 8 |
+| LCD MOSI / SCLK / CS / DC / reset / backlight | 2 / 4 / 5 / 47 / 38 / 42 |
+| Touch I2C SDA / SCL / interrupt / reset | 11 / 7 / 12 / 6 |
+| Audio I2C SDA / SCL | 15 / 14 |
+| I2S MCLK / BCK / LRCK / data to codec | 16 / 9 / 45 / 8 |
+| Speaker amplifier enable | 46 |
+| microSD CLK / CMD / D0 (1-bit SDMMC) | 17 / 18 / 21 |
+| Battery voltage (ADC1 ch0) | 1 |
 | BOOT button | 0 |
 
-**Board revisions.** Waveshare ships two audio variants. V1 has a PCM5101 DAC with no control
-bus. V2 has an ES8311 codec (I2C 0x18) and ES7210 microphone ADC (0x40), needs MCLK on GPIO2, and
-gates its amplifier with GPIO15. `board_audio_init()` probes for the ES8311 at start-up and
-configures whichever is present; the log shows `audio: V1 board (PCM5101)` or
-`audio: V2 board (ES8311)`. On both, volume is applied in software (the ES8311 is left at 0 dB).
+`main/hardware/board.c` maps these pins from SpotPear's
+[official schematic](https://cdn.static.spotpear.com/uploads/picture/learn/ESP32/ESP32-S3-LCD-1.28-BOX-THIN/ESP32S3-1.28inch-BOX.pdf)
+and [product wiki](https://spotpear.com/index.php/wiki/ESP32-S3-N16R8-AI-DeepSeek-XiaoZhi-XiaGe-Qwen-DouBao-1.28-inch-Round-LCD-BOX-TouchScreen.html).
+The board separates the touch I2C pins from the codec I2C pins and has no TCA9554 expander. The
+firmware uses Espressif's CST816S-family driver for the CST816D; touch was confirmed working on the
+owner's device, although the supplied controller datasheet does not document the coordinate
+register protocol.
 
 ### How playback works
 
@@ -291,17 +296,21 @@ docs/
   `CONFIG_FATFS_VFS_FSTAT_BLKSIZE` is left at 0.
 - **Power saving:** after a while without a touch the screen dims, then turns off (panel asleep,
   LVGL paused, CPU down to 80 MHz) while audio keeps playing. With the screen off, nothing playing
-  or downloading and no USB host attached, the device deep-sleeps; a touch (the CST816 pulls
-  GPIO4 low) or BOOT wakes it. Wi-Fi uses modem sleep.
+  or downloading and no USB host attached, the device deep-sleeps; the touch controller's GPIO12
+  interrupt or BOOT wakes it. Wi-Fi uses modem sleep.
 - **Battery:** the voltage is mapped through a typical LiPo curve. The charger's status pin only
   drives its LED and USB power isn't wired to a GPIO, so charging is inferred: a USB host on the
   ESP32's own port, or the voltage jumping or trending. "Charged" is inferred from about 3 minutes
   of flat readings just below 4.2 V while on power.
-- **Touch:** the CST816T powers up with continuous swipe tracking disabled (MotionMask `0xEC` =
-  0), which breaks gestures; `board.c` sets it to `0x06`. The edge arcs claim touches from about
-  150 px out from the centre, so all controls stay inside that (round controls hit-test as circles).
-- **Display:** panels that report ID `00 02 7F 7F` need Waveshare's alternate ST77916 init table,
-  which is selected automatically.
+- **Touch:** the board schematic identifies a CST816D. The port uses Espressif's CST816S-family
+  driver with ID reads disabled; touch responds on the owner's device. Raw touch coordinates are
+  unmirrored, while the display's native X mirror is corrected in the panel configuration. The old
+  Waveshare-only `MotionMask` and sleep-register writes were removed because the CST816D datasheet
+  does not document them.
+- **Display and controls:** the SpotPear panel is a 240×240 GC9A01 over 4-wire SPI. The original
+  360×360 UI is adapted to the smaller panel; navigation, shelf selectors, and player hit targets
+  were enlarged in this port. The owner has flashed the update; touch-target usability should be
+  assessed during regular use.
 - **Server:** some reverse proxies reject default HTTP user agents, so the client sends
   `ABSpresso/<version>`.
 - **Debugging aids:** add `target_compile_definitions(${COMPONENT_LIB} PRIVATE ...)` to

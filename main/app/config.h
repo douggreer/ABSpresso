@@ -15,7 +15,7 @@ typedef struct {
     char refresh[1024];   // refresh token for renewing the access token ("" for API keys)
     int skip_back_s;      // Now Playing skip buttons
     int skip_fwd_s;
-    bool rotate180;       // screen upside down (how this device is usually mounted)
+    bool rotate180;       // rotate 180 degrees from the SpotPear panel's native orientation
 } app_config_t;
 
 void config_init(void);

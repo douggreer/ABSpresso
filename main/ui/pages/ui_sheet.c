@@ -202,7 +202,7 @@ void sheet_build(lv_obj_t *scr)
     lv_obj_center(s_placeholder);
     // The cached thumbnail is COVER_THUMB_SIZE; scale it down to fit the box.
     s_cover = lv_image_create(s_cover_box);
-    lv_image_set_scale(s_cover, 256 * COVER_BOX / COVER_THUMB_SIZE);
+    lv_image_set_scale(s_cover, 256 * UI_PX(COVER_BOX) / COVER_THUMB_SIZE);
     lv_obj_center(s_cover);
 
     s_title = ui_label(s_sheet, &ui_font_16, COLOR_TEXT, 250);

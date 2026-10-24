@@ -186,6 +186,7 @@ carousel_t *carousel_create(lv_obj_t *parent, const carousel_cfg_t *cfg)
         lv_obj_center(card->placeholder);
 
         card->img = lv_image_create(card->root);
+        lv_image_set_scale(card->img, UI_SCALE_FACTOR_256);
         lv_obj_center(card->img);
         lv_obj_add_flag(card->img, LV_OBJ_FLAG_HIDDEN);
 

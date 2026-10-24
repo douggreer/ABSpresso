@@ -15,10 +15,10 @@
 
 static const char *TAG = "storage";
 
-// 1-bit SDMMC (pins from Waveshare's demo for this board).
-#define PIN_SD_CLK 14
-#define PIN_SD_CMD 17
-#define PIN_SD_D0  16
+// 1-bit SDMMC (GPIO17 clock, GPIO18 command, GPIO21 D0).
+#define PIN_SD_CLK 17
+#define PIN_SD_CMD 18
+#define PIN_SD_D0  21
 
 static sdmmc_card_t *s_card;
 

@@ -4,9 +4,49 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include "board.h"
 #include "lvgl.h"
 #include "abs_api.h"
 #include "ui_fonts.h"
+
+// ABSpresso's original layout is 360x360. Scale its pixel geometry to the
+// SpotPear panel while retaining the original font sizes and LVGL sentinels.
+static inline int32_t ui_scale_coord(int32_t value)
+{
+    // LVGL 9 encodes percentages and LV_SIZE_CONTENT as special coordinates. Preserve all of
+    // those encodings; only scale plain pixel coordinates (including negative pixel offsets).
+    return LV_COORD_IS_SPEC(value) ? value : value * BOARD_LCD_H_RES / 360;
+}
+#define UI_PX(v) ui_scale_coord((int32_t)(v))
+#define UI_SCALE_FACTOR_256 ((BOARD_LCD_H_RES * 256 + 180) / 360)
+
+// Raw helpers for values that are already in the physical panel's coordinates.
+static inline void ui_obj_set_size_raw(lv_obj_t *obj, int w, int h) { lv_obj_set_size(obj, w, h); }
+static inline void ui_obj_set_height_raw(lv_obj_t *obj, int h) { lv_obj_set_height(obj, h); }
+
+// Apply the 360 -> 240 scale consistently to the existing UI's position and
+// dimension calls. LVGL's special percentage and content-size encodings pass through unchanged.
+#define lv_obj_set_size(obj, w, h) lv_obj_set_size((obj), UI_PX(w), UI_PX(h))
+#define lv_obj_set_width(obj, w) lv_obj_set_width((obj), UI_PX(w))
+#define lv_obj_set_height(obj, h) lv_obj_set_height((obj), UI_PX(h))
+#define lv_obj_set_pos(obj, x, y) lv_obj_set_pos((obj), UI_PX(x), UI_PX(y))
+#define lv_obj_set_x(obj, x) lv_obj_set_x((obj), UI_PX(x))
+#define lv_obj_set_y(obj, y) lv_obj_set_y((obj), UI_PX(y))
+#define lv_obj_align(obj, align, x, y) lv_obj_align((obj), (align), UI_PX(x), UI_PX(y))
+#define lv_obj_align_to(obj, base, align, x, y) lv_obj_align_to((obj), (base), (align), UI_PX(x), UI_PX(y))
+#define lv_obj_set_ext_click_area(obj, area) lv_obj_set_ext_click_area((obj), UI_PX(area))
+#define lv_obj_set_style_radius(obj, radius, selector) lv_obj_set_style_radius((obj), UI_PX(radius), (selector))
+#define lv_obj_set_style_border_width(obj, width, selector) lv_obj_set_style_border_width((obj), UI_PX(width), (selector))
+#define lv_obj_set_style_arc_width(obj, width, selector) lv_obj_set_style_arc_width((obj), UI_PX(width), (selector))
+#define lv_obj_set_style_shadow_width(obj, width, selector) lv_obj_set_style_shadow_width((obj), UI_PX(width), (selector))
+#define lv_obj_set_style_pad_all(obj, value, selector) lv_obj_set_style_pad_all((obj), UI_PX(value), (selector))
+#define lv_obj_set_style_pad_row(obj, value, selector) lv_obj_set_style_pad_row((obj), UI_PX(value), (selector))
+#define lv_obj_set_style_pad_column(obj, value, selector) lv_obj_set_style_pad_column((obj), UI_PX(value), (selector))
+#define lv_obj_set_style_pad_top(obj, value, selector) lv_obj_set_style_pad_top((obj), UI_PX(value), (selector))
+#define lv_obj_set_style_pad_bottom(obj, value, selector) lv_obj_set_style_pad_bottom((obj), UI_PX(value), (selector))
+#define lv_obj_set_style_pad_left(obj, value, selector) lv_obj_set_style_pad_left((obj), UI_PX(value), (selector))
+#define lv_obj_set_style_pad_right(obj, value, selector) lv_obj_set_style_pad_right((obj), UI_PX(value), (selector))
+#define lv_obj_set_style_margin_top(obj, value, selector) lv_obj_set_style_margin_top((obj), UI_PX(value), (selector))
 
 #define COLOR_BG     lv_color_hex(0x101418)
 #define COLOR_CARD   lv_color_hex(0x1E252C)
@@ -19,8 +59,8 @@
 // ~160 px. Keep tappable things' bounding boxes inside those radii where they share angles with
 // an arc, and inside ~160 elsewhere.
 
-// The dock spans y 39..77; pages start below it.
-#define DOCK_Y   39
+// The enlarged dock spans y 34..80; pages start below it.
+#define DOCK_Y   34
 #define PAGE_TOP 84
 
 // Shared page layout, so Home and Library line up: covers (and lists) in the middle, the switcher

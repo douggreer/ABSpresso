@@ -67,7 +67,7 @@ void config_init(void)
     s_cfg = heap_caps_calloc(1, sizeof(*s_cfg), MALLOC_CAP_SPIRAM);
     s_cfg->skip_back_s = 30;
     s_cfg->skip_fwd_s = 30;
-    s_cfg->rotate180 = true;
+    s_cfg->rotate180 = false;
 
     nvs_handle_t h;
     if (nvs_open("cfg", NVS_READONLY, &h) == ESP_OK) {

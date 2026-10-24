@@ -1,6 +1,6 @@
 #pragma once
 
-// Battery saving. There are no buttons, so touch is the only way in:
+// Battery saving and screen power management. Touch and BOOT wake the device:
 //
 //  - No touch for a while: dim, then turn the screen off (panel asleep, LVGL paused, CPU allowed
 //    down to 80 MHz). Audio carries on. The next touch wakes the screen and is swallowed so it
