@@ -9,8 +9,8 @@
 
 #define SWITCHER_MAX 6
 // The pill's size, for pages that show a plain title in the same place.
-#define SWITCHER_W 230
-#define SWITCHER_H 36
+#define SWITCHER_W 250
+#define SWITCHER_H 44
 
 typedef struct switcher switcher_t;
 

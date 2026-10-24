@@ -1,4 +1,5 @@
-// UI shell for the 360x360 round panel: one screen with three pages (Home, Library, Now Playing)
+// UI shell designed at 360x360 and scaled to the SpotPear 240x240 panel: one screen with three pages
+// (Home, Library, Now Playing)
 // and a dock of page buttons across the top. Swipes belong to the pages (carousels and rows), so
 // page switching is done from the dock. Player state and covers are polled on an LVGL timer, so
 // nothing outside the LVGL task touches widgets.
@@ -74,14 +75,14 @@ void ui_one_line(lv_obj_t *label, const lv_font_t *font)
     lv_obj_set_style_text_font(label, font, 0);
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
     lv_obj_set_width(label, lv_pct(100));
-    lv_obj_set_height(label, lv_font_get_line_height(font));
+    ui_obj_set_height_raw(label, lv_font_get_line_height(font));
 }
 
 lv_obj_t *ui_page_container(lv_obj_t *parent)
 {
     lv_obj_t *p = lv_obj_create(parent);
     lv_obj_remove_style_all(p);
-    lv_obj_set_size(p, 360, 360);
+    ui_obj_set_size_raw(p, BOARD_LCD_H_RES, BOARD_LCD_V_RES);
     lv_obj_remove_flag(p, LV_OBJ_FLAG_SCROLLABLE);
     return p;
 }
@@ -287,9 +288,10 @@ static void audit(lv_obj_t *o, const char *page, const zone_t *z, int nz, const 
         cl.x2 = LV_MIN(a.x2, clip->x2);
         cl.y2 = LV_MIN(a.y2, clip->y2);
         if (cl.x1 > cl.x2 || cl.y1 > cl.y2) continue;
+        const float centre = BOARD_LCD_H_RES / 2.0f;
         if (lv_obj_has_flag(c, LV_OBJ_FLAG_CLICKABLE) && !is_page(c) && lv_obj_has_flag(c, LV_OBJ_FLAG_ADV_HITTEST)) {
             // Round buttons: test the circle's farthest point from the centre and its angular span.
-            const float rad = lv_area_get_width(&a) / 2.0f, cx = a.x1 + rad - 180, cy = a.y1 + rad - 180;
+            const float rad = lv_area_get_width(&a) / 2.0f, cx = a.x1 + rad - centre, cy = a.y1 + rad - centre;
             const float d = sqrtf(cx * cx + cy * cy), ang = atan2f(cy, cx) * 57.2958f;
             for (int zi = 0; zi < nz; zi++) {
                 if (d + rad <= z[zi].r) continue;
@@ -299,12 +301,13 @@ static void audit(lv_obj_t *o, const char *page, const zone_t *z, int nz, const 
                 float lo = z[zi].lo, hi = z[zi].hi, a2 = ang;
                 if (lo > 180 && a2 < 0) a2 += 360;
                 if (a2 + half >= lo && a2 - half <= hi) {
-                    printf("AUDIT %s: round obj at (%.0f,%.0f) r=%.0f reaches %.0f..%.0f deg\n", page, cx + 180,
-                           cy + 180, rad, a2 - half, a2 + half);
+                    printf("AUDIT %s: round obj at (%.0f,%.0f) r=%.0f reaches %.0f..%.0f deg\n", page, cx + centre,
+                           cy + centre, rad, a2 - half, a2 + half);
                 }
             }
         } else if (lv_obj_has_flag(c, LV_OBJ_FLAG_CLICKABLE) && !is_page(c)) {
-            int xs[2] = {cl.x1 - 180, cl.x2 - 180}, ys[2] = {cl.y1 - 180, cl.y2 - 180};
+            int xs[2] = {cl.x1 - (int)centre, cl.x2 - (int)centre};
+            int ys[2] = {cl.y1 - (int)centre, cl.y2 - (int)centre};
             for (int k = 0; k < 4; k++) {
                 float x = xs[k & 1], y = ys[k >> 1], r = sqrtf(x * x + y * y), ang = atan2f(y, x) * 57.2958f;
                 bool hit = false;
@@ -332,9 +335,9 @@ static void refresh_timer(lv_timer_t *t)
 #ifdef LAYOUT_AUDIT
     static int tick;
     if (g_book_count && ++tick == 8) {
-        const lv_area_t full = {0, 0, 359, 359};
-        const zone_t lib[] = {{160, -66, 36}};
-        const zone_t np[] = {{150, -54, 61}, {150, 119, 234}};
+        const lv_area_t full = {0, 0, BOARD_LCD_H_RES - 1, BOARD_LCD_V_RES - 1};
+        const zone_t lib[] = {{UI_PX(160), -66, 36}};
+        const zone_t np[] = {{UI_PX(150), -54, 61}, {UI_PX(150), 119, 234}};
         for (int p = 0; p < PAGE_COUNT; p++) {
             ui_show_page(p);
             lv_obj_update_layout(s_scr);
@@ -389,9 +392,9 @@ void ui_init(void)
     static const char *icons[PAGE_COUNT] = {LV_SYMBOL_HOME, LV_SYMBOL_LIST, LV_SYMBOL_PLAY,
                                                 LV_SYMBOL_SETTINGS};
     for (int i = 0; i < PAGE_COUNT; i++) {
-        s_dock[i] = ui_round_button(s_scr, 38, icons[i], &ui_font_16, on_dock, (void *)(intptr_t)i);
-        // 44 px apart: the outer buttons stay inside the Library's A-Z ring.
-        lv_obj_align(s_dock[i], LV_ALIGN_TOP_MID, (2 * i - (PAGE_COUNT - 1)) * 22, DOCK_Y);
+        s_dock[i] = ui_round_button(s_scr, 46, icons[i], &ui_font_16, on_dock, (void *)(intptr_t)i);
+        // Keep a small gap between the enlarged circles and clear of the side arcs and A-Z ring.
+        lv_obj_align(s_dock[i], LV_ALIGN_TOP_MID, (2 * i - (PAGE_COUNT - 1)) * 24, DOCK_Y);
         lv_obj_set_style_border_color(s_dock[i], COLOR_ACCENT, 0);
         lv_obj_add_flag(s_dock[i], LV_OBJ_FLAG_ADV_HITTEST);
         lv_obj_add_event_cb(s_dock[i], round_hit_test, LV_EVENT_HIT_TEST, NULL);

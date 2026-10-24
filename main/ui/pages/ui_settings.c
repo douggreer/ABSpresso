@@ -50,7 +50,7 @@ static const view_t s_row_view[ROW_COUNT] = {
 static lv_obj_t *s_views[VIEW_COUNT], *s_values[ROW_COUNT], *s_rotate_sw, *s_library_btn;
 static switcher_t *s_switcher;
 static view_t s_view;
-static bool s_rotated = true;  // default: upside down (how this device is mounted)
+static bool s_rotated = false; // the SpotPear panel's native orientation is upright
 
 static void apply_rotation(bool rotated, bool save)
 {

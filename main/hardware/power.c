@@ -20,7 +20,7 @@
 
 static const char *TAG = "power";
 
-#define PIN_TOUCH_INT GPIO_NUM_4  // pulses low on a touch, even in the controller's low-power scan
+#define PIN_TOUCH_INT GPIO_NUM_12 // CST816D interrupt; also used as a deep-sleep wake source
 #define PIN_BOOT      GPIO_NUM_0  // BOOT button, low when pressed
 #define POLL_MS       100
 #define DIM_PERCENT   25          // of the configured brightness

@@ -1,6 +1,6 @@
 #pragma once
 
-// Battery level from the LiPo voltage (GPIO8 via a 1:3 divider).
+// Battery level from the LiPo voltage (SpotPear GPIO1 via a 1:2 divider).
 //
 // The charger's status pin only drives the charge LED and USB power isn't wired to a GPIO, so
 // charging is inferred from the voltage: plugging in makes it jump up and unplugging makes it drop

@@ -4,10 +4,10 @@
 #include "esp_err.h"
 #include "lvgl.h"
 
-#define BOARD_LCD_H_RES 360
-#define BOARD_LCD_V_RES 360
+#define BOARD_LCD_H_RES 240
+#define BOARD_LCD_V_RES 240
 
-// Brings up I2C, the IO expander, the QSPI display, touch and LVGL.
+// Brings up touch I2C, the GC9A01 SPI display, touch and LVGL.
 esp_err_t board_display_init(lv_display_t **out_disp);
 
 // 0-100
@@ -21,7 +21,7 @@ bool board_touch_pressed(void);
 // Screen off and touch controller into its low-power scan, ready for deep sleep.
 void board_prepare_deep_sleep(void);
 
-// Brings up I2S to the PCM5101 DAC (V1) or ES8311 codec (V2), detected over I2C.
+// Brings up I2S to the onboard ES8311 codec and NS4150B amplifier.
 esp_err_t board_audio_init(void);
 
 // Opens the output at the given format. Safe to call again when the format changes.
