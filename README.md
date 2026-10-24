@@ -1,6 +1,12 @@
 <p align="center"><img src="docs/brand/banner.png" alt="ABSpresso: an espresso-sized Audiobookshelf player for an ESP32 with a round display"></p>
 
-# ABSpresso
+
+## SpotPear AI-BOX 1.28" Port of ABSpresso
+
+I created this fork of ABSpresso because I could not find the device it was built for (Waveshare 1.85" Dev Kit) in stock anywhere, and the retail price was quite high at $50-$60.  This version adapts [ABSpresso by Tomek Kent (@tomekent)](https://github.com/tomekent/ABSpresso)
+for SpotPear's 1.28-inch ESP32-S3-AI-BOX-V1.28. This device can be found for as low as $25 on Aliexpress.  I got it for $15 using coupons and coins.  The screen is a little smaller, so the UI had to be adapted somewhat.  It works great, and I thank the original developer for 99% of the code!
+
+# What is ABSpresso?
 
 An espresso-sized audiobook player for [Audiobookshelf](https://www.audiobookshelf.org/). It runs
 on an inexpensive ESP32-S3 board with a round touchscreen and a built-in speaker, streams
@@ -9,12 +15,6 @@ you can pick up where you left off here, on your phone or on the web.
 
 It's meant for the desk or the bedside table: a dedicated "carry on with my book" device, with no
 phone needed.
-
-## SpotPear ESP32-S3-AI-BOX-V1.28 port
-
-This version adapts [ABSpresso by Tomek Kent (@tomekent)](https://github.com/tomekent/ABSpresso)
-for SpotPear's 1.28-inch ESP32-S3-AI-BOX-V1.28. Upstream firmware binaries target the Waveshare
-ESP32-S3-Touch-LCD-1.85C and are **not compatible** with this board; build this port from source.
 
 ### What changed in this port
 
