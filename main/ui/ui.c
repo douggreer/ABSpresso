@@ -6,6 +6,8 @@
 
 #include "ui.h"
 
+#include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +28,8 @@ int g_book_count;
 book_list_t g_alpha, g_continue, g_recent, g_downloaded;
 author_t *g_authors;
 int g_author_count;
+series_t *g_series;
+int g_series_count;
 
 static volatile bool s_refresh_requested;
 static bool s_from_cache;
@@ -224,6 +228,7 @@ static void refresh_page(void)
 
 void ui_show_page(ui_page_t page)
 {
+    if (search_visible()) ui_search_close();
     s_page = page;
     for (int i = 0; i < PAGE_COUNT; i++) {
         if (i == (int)page) lv_obj_remove_flag(s_pages[i], LV_OBJ_FLAG_HIDDEN);
@@ -400,6 +405,7 @@ void ui_init(void)
         lv_obj_add_event_cb(s_dock[i], round_hit_test, LV_EVENT_HIT_TEST, NULL);
     }
 
+    search_build(s_scr);
     sheet_build(s_scr);
     episodes_build(s_scr);
     libpicker_build(s_scr);
@@ -512,6 +518,18 @@ void ui_show_message(const char *msg)
     }
 }
 
+void ui_search_open(ui_search_mode_t mode)
+{
+    for (int i = 0; i < PAGE_COUNT; i++) lv_obj_add_flag(s_dock[i], LV_OBJ_FLAG_HIDDEN);
+    search_open(mode);
+}
+
+void ui_search_close(void)
+{
+    search_close();
+    for (int i = 0; i < PAGE_COUNT; i++) lv_obj_remove_flag(s_dock[i], LV_OBJ_FLAG_HIDDEN);
+}
+
 /* ---------- derived book lists ---------- */
 
 static int cmp_last_update(const void *a, const void *b)
@@ -557,12 +575,19 @@ static void free_lists(void)
         free(g_authors[i].books.idx);
     }
     free(g_authors);
+    for (int i = 0; i < g_series_count; i++) {
+        free(g_series[i].name);
+        free(g_series[i].books.idx);
+    }
+    free(g_series);
     memset(&g_alpha, 0, sizeof(g_alpha));
     memset(&g_continue, 0, sizeof(g_continue));
     memset(&g_recent, 0, sizeof(g_recent));
     memset(&g_downloaded, 0, sizeof(g_downloaded));
     g_authors = NULL;
     g_author_count = 0;
+    g_series = NULL;
+    g_series_count = 0;
 }
 
 // Books can credit several authors ("A, B"); each author gets an entry listing the book.
@@ -610,6 +635,146 @@ static void build_authors(void)
     g_author_count = n;
 }
 
+static int cmp_series(const void *a, const void *b)
+{
+    const series_t *x = a, *y = b;
+    return text_cmp(x->name, y->name);
+}
+
+// Some libraries encode the book's sequence in the series name (for example, "Hilo #2")
+// instead of keeping it in ABS's separate sequence field. Group those books under "Hilo".
+static size_t series_group_name_len(const char *name)
+{
+    size_t end = strlen(name);
+    while (end && isspace((unsigned char)name[end - 1])) end--;
+
+    size_t digits = end;
+    while (digits && isdigit((unsigned char)name[digits - 1])) digits--;
+    if (digits == end) return end;
+
+    size_t marker = digits;
+    while (marker && isspace((unsigned char)name[marker - 1])) marker--;
+    if (!marker || name[marker - 1] != '#') return end;
+
+    size_t base = marker - 1;
+    while (base && isspace((unsigned char)name[base - 1])) base--;
+    return base ? base : end;
+}
+
+static int series_sequence_from_name(const char *name, size_t base_len)
+{
+    const char *p = name + base_len;
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (*p++ != '#') return -1;
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (!isdigit((unsigned char)*p)) return -1;
+
+    int number = 0;
+    while (isdigit((unsigned char)*p)) {
+        int digit = *p++ - '0';
+        if (number < INT_MAX) {
+            number = number > (INT_MAX - digit) / 10 ? INT_MAX : number * 10 + digit;
+        }
+    }
+    return number;
+}
+
+static int series_book_number(const abs_book_t *book, const char *group_name)
+{
+    size_t group_len = strlen(group_name);
+    for (int i = 0; i < book->series_count; i++) {
+        const char *name = book->series[i];
+        if (!name || !name[0]) continue;
+        size_t base_len = series_group_name_len(name);
+        if (base_len == group_len && strncasecmp(group_name, name, group_len) == 0) {
+            return series_sequence_from_name(name, base_len);
+        }
+    }
+    return -1;
+}
+
+static bool series_book_before(int lhs, int rhs, const char *series_name)
+{
+    int lhs_number = series_book_number(&g_books[lhs], series_name);
+    int rhs_number = series_book_number(&g_books[rhs], series_name);
+    if (lhs_number >= 0 && rhs_number < 0) return true;
+    if (lhs_number < 0 && rhs_number >= 0) return false;
+    if (lhs_number >= 0 && rhs_number >= 0 && lhs_number != rhs_number) return lhs_number < rhs_number;
+    return text_cmp(g_books[lhs].sort_title, g_books[rhs].sort_title) < 0;
+}
+
+static void build_series(void)
+{
+    int cap = g_book_count + 1, n = 0;
+    series_t *series = ps_alloc(cap * sizeof(series_t));
+    if (!series) {
+        g_series = NULL;
+        g_series_count = 0;
+        return;
+    }
+    for (int i = 0; i < g_book_count; i++) {
+        const abs_book_t *book = &g_books[i];
+        for (int s = 0; s < book->series_count; s++) {
+            const char *name = book->series[s];
+            if (!name || !name[0]) continue;
+            size_t name_len = series_group_name_len(name);
+            if (!name_len) continue;
+
+            int at = 0;
+            while (at < n && !(strlen(series[at].name) == name_len && strncasecmp(series[at].name, name, name_len) == 0)) at++;
+            if (at == n) {
+                if (n == cap) {
+                    int next_cap = cap * 2;
+                    series_t *grown = heap_caps_realloc(series, next_cap * sizeof(series_t), MALLOC_CAP_SPIRAM);
+                    if (!grown) continue;
+                    memset(grown + cap, 0, (next_cap - cap) * sizeof(series_t));
+                    series = grown;
+                    cap = next_cap;
+                }
+                char *copy = ps_strdup(name, name_len);
+                int *indices = ps_alloc(8 * sizeof(int));
+                if (!copy || !indices) {
+                    free(copy);
+                    free(indices);
+                    continue;
+                }
+                series[n].name = copy;
+                series[n].books.idx = indices;
+                at = n++;
+            }
+
+            book_list_t *books = &series[at].books;
+            if (!books->idx) continue;
+            bool already_added = false;
+            for (int j = 0; j < books->count; j++) {
+                if (books->idx[j] == i) already_added = true;
+            }
+            if (already_added) continue;
+            if (books->count && books->count % 8 == 0) {
+                int *grown = heap_caps_realloc(books->idx, (books->count + 8) * sizeof(int), MALLOC_CAP_SPIRAM);
+                if (!grown) continue;
+                books->idx = grown;
+            }
+            books->idx[books->count++] = i;
+        }
+    }
+    for (int s = 0; s < n; s++) {
+        book_list_t *books = &series[s].books;
+        for (int i = 1; i < books->count; i++) {
+            int book_index = books->idx[i];
+            int j = i;
+            while (j > 0 && series_book_before(book_index, books->idx[j - 1], series[s].name)) {
+                books->idx[j] = books->idx[j - 1];
+                j--;
+            }
+            books->idx[j] = book_index;
+        }
+    }
+    qsort(series, n, sizeof(series_t), cmp_series);
+    g_series = series;
+    g_series_count = n;
+}
+
 void ui_set_books(const abs_book_t *books, int count)
 {
     free_lists();
@@ -630,10 +795,12 @@ void ui_set_books(const abs_book_t *books, int count)
     qsort(g_recent.idx, g_recent.count, sizeof(int), cmp_added);
     if (g_recent.count > RECENT_MAX) g_recent.count = RECENT_MAX;
     build_authors();
+    build_series();
     rebuild_downloaded();
 
     home_set_books();
     library_set_books();
+    search_refresh();
     ui_show_message(count ? NULL : "No books found");
 }
 

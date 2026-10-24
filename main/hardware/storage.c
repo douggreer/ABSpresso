@@ -129,6 +129,35 @@ esp_err_t storage_write_file(const char *path, const void *data, size_t len)
     return ESP_OK;
 }
 
+esp_err_t storage_append_file(const char *path, const void *data, size_t len)
+{
+    if (!s_card) return ESP_ERR_INVALID_STATE;
+    FILE *f = fopen(path, "ab");
+    if (!f) {
+        ESP_LOGW(TAG, "opening %s for append failed (errno %d)", path, errno);
+        return ESP_FAIL;
+    }
+
+    // Keep the same internal-RAM bounce-buffer rule as whole-file writes. Callers may keep their
+    // event queues in PSRAM, which the SDMMC DMA must not read from directly.
+    uint8_t *bounce = heap_caps_malloc(BOUNCE, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    bool ok = bounce != NULL;
+    for (size_t off = 0; ok && off < len;) {
+        size_t chunk = (len - off) < BOUNCE ? (len - off) : BOUNCE;
+        memcpy(bounce, (const uint8_t *)data + off, chunk);
+        ok = fwrite(bounce, 1, chunk, f) == chunk;
+        off += chunk;
+    }
+    free(bounce);
+    ok &= fflush(f) == 0;
+    ok &= fclose(f) == 0;
+    if (!ok) {
+        ESP_LOGW(TAG, "appending %s failed (errno %d)", path, errno);
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+}
+
 esp_err_t storage_mkdirs(const char *path)
 {
     char p[160];

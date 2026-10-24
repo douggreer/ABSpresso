@@ -25,6 +25,14 @@ phone needed.
 - Resized the original interface for 240×240 and enlarged the top navigation and bottom selector
   touch targets, plus key player controls, for easier use on the small screen.
 - Updated the build configuration and component list for the SpotPear hardware.
+- Added title, author, and series search from Home. Author search lists matching names first, then
+  opens the selected author's books. Series search groups numbered entries under one series name
+  and opens that series' books in numerical order. Long result titles stay on one line and keep
+  their beginning visible.
+- Made book and shelf scrolling easier to start, added a drag indicator, and lowered the swipe
+  distance needed to change a carousel or shelf.
+- Added an asynchronous, bounded playback-error log on the SD card to help diagnose failed
+  sessions, streams, local downloads, decoder errors, and audio-output errors.
 
 ### Credits and device status
 
@@ -52,7 +60,9 @@ See [PORTING.md](PORTING.md) for the SpotPear pin map, build steps, and first ha
 
 - **Streams from your server**: audiobooks and podcasts, in any format Audiobookshelf can serve.
   Progress syncs every 20 s and on pause, seek and stop.
-- **Home**: Continue Listening, Recently Added and Downloaded shelves of cover art.
+- **Home**: Continue Listening, Search by Title, Search by Series, Search by Author, Recently Added,
+  and Downloaded. Series matches show one row per series; selecting it opens the books in series
+  number order. Author matches open a list of that author's books.
 - **Library**: browse by cover, as an A-Z list of books, or by author. Drag the ring on the right
   edge to jump through the alphabet.
 - **Now Playing**: cover art backdrop, a progress arc to scrub through the chapter, a volume arc,
@@ -62,7 +72,8 @@ See [PORTING.md](PORTING.md) for the SpotPear pin map, build steps, and first ha
 - **Multiple libraries**: switch between the server's libraries from Settings.
 - **SD card (optional)**: caches the library and covers for instant start-up and offline
   browsing, and holds downloaded books for offline listening. Progress made offline is sent to the
-  server when it's back in reach.
+  server when it's back in reach. Playback failures are recorded to a small rotating log for later
+  diagnosis.
 - **Setup from your phone**: the device runs its own Wi-Fi network with a QR code to join. Sign
   in with your Audiobookshelf username and password; no API key needed.
 - **Battery aware**: battery level and charging state in the status row, a dimming screen, screen
@@ -154,7 +165,7 @@ and asks you to sign in again only if the server ends the session.
 - **Better battery readings**: calibrate the voltage curve against a real discharge, and detect
   charging directly (the charger's status pin isn't connected to the ESP32 on this board).
 - **Sleep timer** and **playback speed** on Now Playing.
-- **Chapter list**, and **series** and **collections** in the Library.
+- **Chapter list** and **collections** in the Library.
 - **Downloading podcast episodes** (books can already be downloaded).
 - **Over-the-air updates** from GitHub releases.
 - **Listening sessions for offline playback**, so it counts in the server's stats.
@@ -166,7 +177,8 @@ and asks you to sign in again only if the server ends the session.
   readings have not been calibrated against a meter, and the latest larger touch targets still need
   a usability check.
 - Greek, Chinese/Japanese/Korean and emoji don't display.
-- Without an SD card, the first library load and covers take a few seconds after each start.
+- Without an SD card, the first library load and covers take a few seconds after each start, and
+  playback errors cannot be saved to the persistent log.
 - A few unusual JPEG covers can't be decoded and show a title card instead.
 - Podcast libraries show up to 150 episodes per show.
 - Changing a cover on the server isn't picked up until the SD cache is cleared.
@@ -247,6 +259,7 @@ keyed by item id, which is unique across the server.
 | `dl/<id>/index.bin` | End offset of each completed segment (seeking is one lookup) |
 | `dl/<id>/meta.json` | Duration and chapters, for playback without the server |
 | `dl/<id>/progress.json` | Local listening position, and whether the server still needs it |
+| `logs/playback.log` and `.1` / `.2` | Recent playback failures as JSON lines; rotated and size-limited |
 
 **Downloads** fetch the same transcoded segments the player streams, using a separate session
 (with its own device ID), one at a time in the background. A 1-hour book takes about 2 minutes.

@@ -50,7 +50,9 @@ static lv_obj_t *make_list(lv_obj_t *page)
     lv_obj_set_style_border_width(l, 0, 0);
     lv_obj_set_style_pad_all(l, 0, 0);
     lv_obj_set_style_pad_row(l, 6, 0);
-    lv_obj_set_scrollbar_mode(l, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scrollbar_mode(l, LV_SCROLLBAR_MODE_ACTIVE);
+    lv_obj_set_style_bg_color(l, COLOR_ACCENT, LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_opa(l, LV_OPA_COVER, LV_PART_SCROLLBAR);
     return l;
 }
 
@@ -158,16 +160,6 @@ static void on_author_clicked(lv_event_t *e)
     show_author((int)(intptr_t)lv_event_get_user_data(e));
 }
 
-/* ---------- gestures ---------- */
-
-static void on_gesture(lv_event_t *e)
-{
-    if (s_view != VIEW_COVERS) return;
-    lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
-    if (dir == LV_DIR_LEFT) carousel_step(s_carousel, 1);
-    else if (dir == LV_DIR_RIGHT) carousel_step(s_carousel, -1);
-}
-
 /* ---------- A-Z ring ---------- */
 
 static void scrub_to(int value)
@@ -237,9 +229,6 @@ static void on_list_scroll(lv_event_t *e)
 
 void library_build(lv_obj_t *page)
 {
-    lv_obj_add_flag(page, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(page, on_gesture, LV_EVENT_GESTURE, NULL);
-
     s_list = make_list(page);
     s_authors = make_list(page);
     s_author_books = make_list(page);
